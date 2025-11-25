@@ -9,42 +9,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout Repository
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 2: Setup SSH Keys
-      - name: Setup SSH Keys
+      - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
 
-          # Save Jump Server PEM
+          # Save keys
           echo "${{ secrets.SSH_JUMP_KEY }}" > ~/.ssh/jump_key
-          chmod 600 ~/.ssh/jump_key
-
-          # Save Target Server PEM
           echo "${{ secrets.SSH_TARGET_KEY }}" > ~/.ssh/target_key
-          chmod 600 ~/.ssh/target_key
+          chmod 600 ~/.ssh/jump_key ~/.ssh/target_key
 
           # Add known hosts
           ssh-keyscan ${{ secrets.JUMP_HOST }} >> ~/.ssh/known_hosts
           ssh-keyscan ${{ secrets.TARGET_HOST }} >> ~/.ssh/known_hosts
 
-      # Step 3: Copy Code to Target EC2 via Jump Server
-      - name: Upload code to EC2
+          # Create SSH config
+          cat <<EOF > ~/.ssh/config
+          Host jump
+            HostName ${{ secrets.JUMP_HOST }}
+            User ${{ secrets.JUMP_USER }}
+            IdentityFile ~/.ssh/jump_key
+
+          Host target
+            HostName ${{ secrets.TARGET_HOST }}
+            User ${{ secrets.TARGET_USER }}
+            IdentityFile ~/.ssh/target_key
+            ProxyJump jump
+          EOF
+
+          chmod 600 ~/.ssh/config
+
+      - name: Upload code using rsync via jump server
         run: |
           rsync -avz \
-            -e "ssh -i ~/.ssh/target_key \
-                -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} \
-                -o IdentityFile=~/.ssh/jump_key" \
             --exclude='.git' \
-            ./ ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }}:${{ secrets.TARGET_DIR }}
+            -e "ssh -F ~/.ssh/config" \
+            ./ target:${{ secrets.TARGET_DIR }}
 
-      # Step 4: Run Deployment Script on Target EC2
-      - name: Run deploy script on EC2
+      - name: Execute deploy script
         run: |
-          ssh \
-            -i ~/.ssh/target_key \
-            -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} \
-            ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }} \
-            "bash /var/www/deploy.sh"
+          ssh -F ~/.ssh/config target "bash /var/www/deploy.sh"
