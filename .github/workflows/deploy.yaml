@@ -1,4 +1,4 @@
-name: Deploy to EC2 Meter App
+name: Deploy to EC2 via Jump Server
 
 on:
   push:
@@ -9,25 +9,42 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      # Step 1: Checkout Repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup SSH
+      # Step 2: Setup SSH Keys
+      - name: Setup SSH Keys
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
+
+          # Save Jump Server PEM
+          echo "${{ secrets.SSH_JUMP_KEY }}" > ~/.ssh/jump_key
+          chmod 600 ~/.ssh/jump_key
+
+          # Save Target Server PEM
+          echo "${{ secrets.SSH_TARGET_KEY }}" > ~/.ssh/target_key
+          chmod 600 ~/.ssh/target_key
+
+          # Add known hosts
           ssh-keyscan ${{ secrets.JUMP_HOST }} >> ~/.ssh/known_hosts
           ssh-keyscan ${{ secrets.TARGET_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Copy code to EC2
+      # Step 3: Copy Code to Target EC2 via Jump Server
+      - name: Upload code to EC2
         run: |
-          rsync -e "ssh -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }}" -avzr \
-          --exclude='.git' \
-          ./ ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }}:${{ secrets.TARGET_DIR }}
+          rsync -avz \
+            -e "ssh -i ~/.ssh/target_key \
+                -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} \
+                -o IdentityFile=~/.ssh/jump_key" \
+            --exclude='.git' \
+            ./ ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }}:${{ secrets.TARGET_DIR }}
 
-      - name: Run deploy script
+      # Step 4: Run Deployment Script on Target EC2
+      - name: Run deploy script on EC2
         run: |
-          ssh -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} \
-          ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }} \
-          "bash /var/www/deploy.sh"
+          ssh \
+            -i ~/.ssh/target_key \
+            -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} \
+            ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }} \
+            "bash /var/www/deploy.sh"
