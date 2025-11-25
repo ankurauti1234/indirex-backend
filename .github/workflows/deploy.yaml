@@ -32,7 +32,6 @@ jobs:
 
       - name: Setup SSH
         run: |
-          # Create .ssh directory
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
@@ -44,7 +43,7 @@ jobs:
           echo "${{ secrets.TARGET_EC2_KEY }}" > ~/.ssh/target_ec2_key
           chmod 600 ~/.ssh/target_ec2_key
           
-          # Create SSH config file
+          # SSH config
           cat > ~/.ssh/config <<EOF
           Host jump-server
             HostName ${{ secrets.JUMP_SERVER_HOST }}
@@ -52,9 +51,7 @@ jobs:
             IdentityFile ~/.ssh/jump_server_key
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
-            ServerAliveInterval 60
-            ServerAliveCountMax 3
-          
+
           Host target-ec2
             HostName ${{ secrets.TARGET_EC2_HOST }}
             User ${{ secrets.TARGET_EC2_USER }}
@@ -62,54 +59,37 @@ jobs:
             ProxyJump jump-server
             StrictHostKeyChecking no
             UserKnownHostsFile /dev/null
-            ServerAliveInterval 60
-            ServerAliveCountMax 3
           EOF
           
           chmod 600 ~/.ssh/config
-          
           echo "✅ SSH configuration created successfully"
 
       - name: Test SSH connectivity
         run: |
           echo "Testing jump server connection..."
-          ssh -v jump-server "echo '✅ Jump server connection successful'"
+          ssh -v jump-server "echo '✅ Jump server OK'"
           
-          echo "Testing target EC2 connection through jump server..."
-          ssh -v target-ec2 "echo '✅ Target EC2 connection successful'"
+          echo "Testing target EC2 connection..."
+          ssh -v target-ec2 "echo '✅ Target EC2 OK'"
 
-      - name: Create deployment archive
-        run: |
-          # Create a tarball of necessary files
-          tar -czf deploy.tar.gz \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='*.log' \
-            --exclude='.env' \
-            --exclude='deploy.tar.gz' \
-            .
-          
-          echo "✅ Deployment archive created: $(du -h deploy.tar.gz | cut -f1)"
+      # 🔥 Removed tar step (avoids 'file changed' error)
 
-      - name: Upload to target server via rsync
+      - name: Upload project using rsync (via Jump Server)
         run: |
           echo "Syncing files to target EC2..."
-          
-          # Use rsync with SSH config
+
           rsync -avz \
-            --progress \
             --delete \
             --exclude='node_modules' \
             --exclude='.git' \
             --exclude='.github' \
             --exclude='*.log' \
-            --exclude='.env.local' \
+            --exclude='.env' \
             --exclude='coverage' \
             -e "ssh" \
             ./ \
             target-ec2:/var/www/meter-app/
-          
+
           echo "✅ Files synced successfully"
 
       - name: Install dependencies on target server
@@ -117,10 +97,8 @@ jobs:
           ssh target-ec2 << 'ENDSSH'
             set -e
             cd /var/www/meter-app
-            
             echo "Installing production dependencies..."
             npm ci --production
-            
             echo "✅ Dependencies installed"
           ENDSSH
 
@@ -128,26 +106,20 @@ jobs:
         run: |
           ssh target-ec2 << 'ENDSSH'
             set -e
-            
             echo "Running deployment script..."
             bash /var/www/deploy.sh
-            
-            echo "✅ Deployment script completed"
+            echo "✅ Deployment completed"
           ENDSSH
 
       - name: Verify deployment
         run: |
           ssh target-ec2 << 'ENDSSH'
-            set -e
             cd /var/www/meter-app
-            
             echo "Checking PM2 status..."
             pm2 list
-            
-            echo "Checking application logs..."
+            echo "Checking logs..."
             pm2 logs --lines 20 --nostream || true
-            
-            echo "✅ Deployment verification completed"
+            echo "✅ Deployment verification done"
           ENDSSH
 
       - name: Cleanup SSH keys
