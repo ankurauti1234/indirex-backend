@@ -59,35 +59,28 @@ jobs:
           EOF
           
           chmod 600 ~/.ssh/config
-          echo "✅ SSH configuration created successfully"
+          echo "SSH config created"
 
       - name: Test SSH connectivity
         run: |
-          echo "Testing jump server..."
-          ssh -v jump-server "echo 'Jump OK'"
-          
-          echo "Testing target EC2..."
-          ssh -v target-ec2 "echo 'EC2 OK'"
+          ssh jump-server "echo 'Jump OK'"
+          ssh target-ec2 "echo 'EC2 OK'"
 
-      # ----------- ⭐ NEW STEP: Upload .env automatically -----------
+      # -------------------- FIXED .ENV UPLOAD -------------------------
       - name: Upload .env to target server
         run: |
           echo "Uploading .env to EC2..."
-
           ssh target-ec2 "mkdir -p /var/www/meter-app"
 
-          ssh target-ec2 "cat > /var/www/meter-app/.env << 'EOF'
+          ssh target-ec2 "cat > /var/www/meter-app/.env" << EOF
 ${{ secrets.ENV_FILE }}
-EOF"
+EOF
 
-          echo "✅ .env uploaded"
+          echo ".env uploaded"
+      # ----------------------------------------------------------------
 
-      # --------------------------------------------------------------
-
-      - name: Upload project using rsync (via Jump Server)
+      - name: Upload project using rsync
         run: |
-          echo "Syncing project files to EC2..."
-
           rsync -avz \
             --delete \
             --exclude='node_modules' \
@@ -100,34 +93,21 @@ EOF"
             ./ \
             target-ec2:/var/www/meter-app/
 
-          echo "✅ Files synced successfully"
-
       - name: Install dependencies on target server
         run: |
           ssh target-ec2 << 'ENDSSH'
-            set -e
             cd /var/www/meter-app
-            echo "Installing production dependencies..."
             npm ci --production
-            echo "Dependencies installed"
           ENDSSH
 
       - name: Run deployment script
         run: |
-          ssh target-ec2 << 'ENDSSH'
-            set -e
-            echo "Running deploy.sh..."
-            bash /var/www/deploy.sh
-            echo "Deployment script completed"
-          ENDSSH
+          ssh target-ec2 "bash /var/www/deploy.sh"
 
       - name: Verify deployment
         run: |
           ssh target-ec2 << 'ENDSSH'
-            cd /var/www/meter-app
-            echo "PM2 status:"
             pm2 list
-            echo "Logs:"
             pm2 logs --lines 20 --nostream || true
           ENDSSH
 
@@ -135,13 +115,12 @@ EOF"
         if: always()
         run: |
           rm -f ~/.ssh/jump_server_key ~/.ssh/target_ec2_key ~/.ssh/config
-          echo "SSH keys cleaned up"
 
       - name: Notify deployment status
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
-            echo "🎉 Deployment successful!"
+            echo "Deployment successful!"
           else
-            echo "❌ Deployment failed."
+            echo "Deployment failed!"
           fi
