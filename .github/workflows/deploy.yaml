@@ -35,15 +35,12 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
-          # Write jump server key
           echo "${{ secrets.JUMP_SERVER_KEY }}" > ~/.ssh/jump_server_key
           chmod 600 ~/.ssh/jump_server_key
           
-          # Write target EC2 key
           echo "${{ secrets.TARGET_EC2_KEY }}" > ~/.ssh/target_ec2_key
           chmod 600 ~/.ssh/target_ec2_key
           
-          # SSH config
           cat > ~/.ssh/config <<EOF
           Host jump-server
             HostName ${{ secrets.JUMP_SERVER_HOST }}
@@ -66,17 +63,30 @@ jobs:
 
       - name: Test SSH connectivity
         run: |
-          echo "Testing jump server connection..."
-          ssh -v jump-server "echo '✅ Jump server OK'"
+          echo "Testing jump server..."
+          ssh -v jump-server "echo 'Jump OK'"
           
-          echo "Testing target EC2 connection..."
-          ssh -v target-ec2 "echo '✅ Target EC2 OK'"
+          echo "Testing target EC2..."
+          ssh -v target-ec2 "echo 'EC2 OK'"
 
-      # 🔥 Removed tar step (avoids 'file changed' error)
+      # ----------- ⭐ NEW STEP: Upload .env automatically -----------
+      - name: Upload .env to target server
+        run: |
+          echo "Uploading .env to EC2..."
+
+          ssh target-ec2 "mkdir -p /var/www/meter-app"
+
+          ssh target-ec2 "cat > /var/www/meter-app/.env << 'EOF'
+${{ secrets.ENV_FILE }}
+EOF"
+
+          echo "✅ .env uploaded"
+
+      # --------------------------------------------------------------
 
       - name: Upload project using rsync (via Jump Server)
         run: |
-          echo "Syncing files to target EC2..."
+          echo "Syncing project files to EC2..."
 
           rsync -avz \
             --delete \
@@ -84,8 +94,8 @@ jobs:
             --exclude='.git' \
             --exclude='.github' \
             --exclude='*.log' \
-            --exclude='.env' \
             --exclude='coverage' \
+            --exclude='.env' \
             -e "ssh" \
             ./ \
             target-ec2:/var/www/meter-app/
@@ -99,42 +109,39 @@ jobs:
             cd /var/www/meter-app
             echo "Installing production dependencies..."
             npm ci --production
-            echo "✅ Dependencies installed"
+            echo "Dependencies installed"
           ENDSSH
 
       - name: Run deployment script
         run: |
           ssh target-ec2 << 'ENDSSH'
             set -e
-            echo "Running deployment script..."
+            echo "Running deploy.sh..."
             bash /var/www/deploy.sh
-            echo "✅ Deployment completed"
+            echo "Deployment script completed"
           ENDSSH
 
       - name: Verify deployment
         run: |
           ssh target-ec2 << 'ENDSSH'
             cd /var/www/meter-app
-            echo "Checking PM2 status..."
+            echo "PM2 status:"
             pm2 list
-            echo "Checking logs..."
+            echo "Logs:"
             pm2 logs --lines 20 --nostream || true
-            echo "✅ Deployment verification done"
           ENDSSH
 
       - name: Cleanup SSH keys
         if: always()
         run: |
-          rm -f ~/.ssh/jump_server_key
-          rm -f ~/.ssh/target_ec2_key
-          rm -f ~/.ssh/config
-          echo "✅ SSH keys cleaned up"
+          rm -f ~/.ssh/jump_server_key ~/.ssh/target_ec2_key ~/.ssh/config
+          echo "SSH keys cleaned up"
 
       - name: Notify deployment status
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
-            echo "🎉 Deployment completed successfully!"
+            echo "🎉 Deployment successful!"
           else
-            echo "❌ Deployment failed. Check logs above."
+            echo "❌ Deployment failed."
           fi
