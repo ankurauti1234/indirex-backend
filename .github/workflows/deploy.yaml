@@ -1,0 +1,33 @@
+name: Deploy to EC2 Meter App
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan ${{ secrets.JUMP_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan ${{ secrets.TARGET_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Copy code to EC2
+        run: |
+          rsync -e "ssh -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }}" -avzr \
+          --exclude='.git' \
+          ./ ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }}:${{ secrets.TARGET_DIR }}
+
+      - name: Run deploy script
+        run: |
+          ssh -o ProxyJump=${{ secrets.JUMP_USER }}@${{ secrets.JUMP_HOST }} \
+          ${{ secrets.TARGET_USER }}@${{ secrets.TARGET_HOST }} \
+          "bash /var/www/deploy.sh"
