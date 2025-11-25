@@ -9,7 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
       - name: Build TypeScript
         run: npm run build
 
-      - name: Test (optional)
+      - name: Run tests (optional)
         run: npm test || echo "No tests configured"
         continue-on-error: true
 
@@ -47,7 +47,7 @@ jobs:
             User ${{ secrets.JUMP_SERVER_USER }}
             IdentityFile ~/.ssh/jump_server_key
             StrictHostKeyChecking no
-          
+
           Host target-ec2
             HostName ${{ secrets.TARGET_EC2_HOST }}
             User ${{ secrets.TARGET_EC2_USER }}
@@ -55,7 +55,7 @@ jobs:
             ProxyJump jump-server
             StrictHostKeyChecking no
           EOF
-          
+
           chmod 600 ~/.ssh/config
 
       - name: Test SSH connectivity
@@ -63,36 +63,49 @@ jobs:
           ssh -v jump-server "echo 'Jump server OK'"
           ssh -v target-ec2 "echo 'Target EC2 OK'"
 
-      - name: Create deployment archive (safe)
+      - name: Prepare deployment package
         run: |
+          rm -rf deploy
           mkdir deploy
           cp -r dist package.json package-lock.json deploy/
           
           tar --warning=no-file-changed -czf deploy.tar.gz deploy
           echo "Tar created: $(du -h deploy.tar.gz | cut -f1)"
 
-      - name: Upload to target EC2
+      - name: Upload deploy.tar.gz to EC2 (safe path)
         run: |
           rsync -avz \
             -e "ssh" \
             deploy.tar.gz \
-            target-ec2:/var/www/
+            target-ec2:~/deploy.tar.gz
 
       - name: Extract & Install on EC2
         run: |
           ssh target-ec2 << 'ENDSSH'
-            cd /var/www
-            tar -xzf deploy.tar.gz
+            set -e
+            
+            sudo mkdir -p /var/www/meter-app
+            sudo rm -rf /var/www/meter-app/deploy/
+            
+            sudo mv ~/deploy.tar.gz /var/www/meter-app/
+            cd /var/www/meter-app
+            sudo tar -xzf deploy.tar.gz
+            
             cd deploy
+
+            # OPTIONAL: Auto-generate .env from GitHub Secrets
+            # echo "${PRODUCTION_ENV}" | sudo tee .env > /dev/null
 
             echo "Installing production dependencies..."
             npm ci --omit=dev
+
+            echo "Build deployment ready"
           ENDSSH
 
-      - name: Run deployment script
+      - name: Run deployment script on EC2
         run: |
           ssh target-ec2 << 'ENDSSH'
-            bash /var/www/deploy.sh
+            sudo bash /var/www/deploy.sh
           ENDSSH
 
       - name: Verify deployment
@@ -106,3 +119,4 @@ jobs:
         if: always()
         run: |
           rm -f ~/.ssh/jump_server_key ~/.ssh/target_ec2_key ~/.ssh/config
+          echo "SSH cleaned"
