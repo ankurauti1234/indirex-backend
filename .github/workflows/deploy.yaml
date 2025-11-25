@@ -9,7 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,18 +35,22 @@ jobs:
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           
+          # Write jump server key
           echo "${{ secrets.JUMP_SERVER_KEY }}" > ~/.ssh/jump_server_key
           chmod 600 ~/.ssh/jump_server_key
           
+          # Write target EC2 key
           echo "${{ secrets.TARGET_EC2_KEY }}" > ~/.ssh/target_ec2_key
           chmod 600 ~/.ssh/target_ec2_key
           
+          # SSH config
           cat > ~/.ssh/config <<EOF
           Host jump-server
             HostName ${{ secrets.JUMP_SERVER_HOST }}
             User ${{ secrets.JUMP_SERVER_USER }}
             IdentityFile ~/.ssh/jump_server_key
             StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
 
           Host target-ec2
             HostName ${{ secrets.TARGET_EC2_HOST }}
@@ -54,69 +58,83 @@ jobs:
             IdentityFile ~/.ssh/target_ec2_key
             ProxyJump jump-server
             StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
           EOF
-
+          
           chmod 600 ~/.ssh/config
+          echo "✅ SSH configuration created successfully"
 
       - name: Test SSH connectivity
         run: |
-          ssh -v jump-server "echo 'Jump server OK'"
-          ssh -v target-ec2 "echo 'Target EC2 OK'"
-
-      - name: Prepare deployment package
-        run: |
-          rm -rf deploy
-          mkdir deploy
-          cp -r dist package.json package-lock.json deploy/
+          echo "Testing jump server connection..."
+          ssh -v jump-server "echo '✅ Jump server OK'"
           
-          tar --warning=no-file-changed -czf deploy.tar.gz deploy
-          echo "Tar created: $(du -h deploy.tar.gz | cut -f1)"
+          echo "Testing target EC2 connection..."
+          ssh -v target-ec2 "echo '✅ Target EC2 OK'"
 
-      - name: Upload deploy.tar.gz to EC2 (safe path)
+      # 🔥 Removed tar step (avoids 'file changed' error)
+
+      - name: Upload project using rsync (via Jump Server)
         run: |
-          rsync -avz \
-            -e "ssh" \
-            deploy.tar.gz \
-            target-ec2:~/deploy.tar.gz
+          echo "Syncing files to target EC2..."
 
-      - name: Extract & Install on EC2
+          rsync -avz \
+            --delete \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='*.log' \
+            --exclude='.env' \
+            --exclude='coverage' \
+            -e "ssh" \
+            ./ \
+            target-ec2:/var/www/meter-app/
+
+          echo "✅ Files synced successfully"
+
+      - name: Install dependencies on target server
         run: |
           ssh target-ec2 << 'ENDSSH'
             set -e
-            
-            sudo mkdir -p /var/www/meter-app
-            sudo rm -rf /var/www/meter-app/deploy/
-            
-            sudo mv ~/deploy.tar.gz /var/www/meter-app/
             cd /var/www/meter-app
-            sudo tar -xzf deploy.tar.gz
-            
-            cd deploy
-
-            # OPTIONAL: Auto-generate .env from GitHub Secrets
-            # echo "${PRODUCTION_ENV}" | sudo tee .env > /dev/null
-
             echo "Installing production dependencies..."
-            npm ci --omit=dev
-
-            echo "Build deployment ready"
+            npm ci --production
+            echo "✅ Dependencies installed"
           ENDSSH
 
-      - name: Run deployment script on EC2
+      - name: Run deployment script
         run: |
           ssh target-ec2 << 'ENDSSH'
-            sudo bash /var/www/deploy.sh
+            set -e
+            echo "Running deployment script..."
+            bash /var/www/deploy.sh
+            echo "✅ Deployment completed"
           ENDSSH
 
       - name: Verify deployment
         run: |
           ssh target-ec2 << 'ENDSSH'
+            cd /var/www/meter-app
+            echo "Checking PM2 status..."
             pm2 list
+            echo "Checking logs..."
             pm2 logs --lines 20 --nostream || true
+            echo "✅ Deployment verification done"
           ENDSSH
 
       - name: Cleanup SSH keys
         if: always()
         run: |
-          rm -f ~/.ssh/jump_server_key ~/.ssh/target_ec2_key ~/.ssh/config
-          echo "SSH cleaned"
+          rm -f ~/.ssh/jump_server_key
+          rm -f ~/.ssh/target_ec2_key
+          rm -f ~/.ssh/config
+          echo "✅ SSH keys cleaned up"
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "🎉 Deployment completed successfully!"
+          else
+            echo "❌ Deployment failed. Check logs above."
+          fi
