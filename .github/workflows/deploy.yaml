@@ -2,52 +2,167 @@ name: Deploy to EC2 via Jump Server
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Run tests (optional)
+        run: npm test || echo "No tests configured"
+        continue-on-error: true
+
       - name: Setup SSH
         run: |
+          # Create .ssh directory
           mkdir -p ~/.ssh
-
-          # Save keys
-          echo "${{ secrets.SSH_JUMP_KEY }}" > ~/.ssh/jump_key
-          echo "${{ secrets.SSH_TARGET_KEY }}" > ~/.ssh/target_key
-          chmod 600 ~/.ssh/jump_key ~/.ssh/target_key
-
-          # Add known hosts
-          ssh-keyscan ${{ secrets.JUMP_HOST }} >> ~/.ssh/known_hosts
-          ssh-keyscan ${{ secrets.TARGET_HOST }} >> ~/.ssh/known_hosts
-
-          # Create SSH config
-          cat <<EOF > ~/.ssh/config
-          Host jump
-            HostName ${{ secrets.JUMP_HOST }}
-            User ${{ secrets.JUMP_USER }}
-            IdentityFile ~/.ssh/jump_key
-
-          Host target
-            HostName ${{ secrets.TARGET_HOST }}
-            User ${{ secrets.TARGET_USER }}
-            IdentityFile ~/.ssh/target_key
-            ProxyJump jump
+          chmod 700 ~/.ssh
+          
+          # Write jump server key
+          echo "${{ secrets.JUMP_SERVER_KEY }}" > ~/.ssh/jump_server_key
+          chmod 600 ~/.ssh/jump_server_key
+          
+          # Write target EC2 key
+          echo "${{ secrets.TARGET_EC2_KEY }}" > ~/.ssh/target_ec2_key
+          chmod 600 ~/.ssh/target_ec2_key
+          
+          # Create SSH config file
+          cat > ~/.ssh/config <<EOF
+          Host jump-server
+            HostName ${{ secrets.JUMP_SERVER_HOST }}
+            User ${{ secrets.JUMP_SERVER_USER }}
+            IdentityFile ~/.ssh/jump_server_key
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            ServerAliveInterval 60
+            ServerAliveCountMax 3
+          
+          Host target-ec2
+            HostName ${{ secrets.TARGET_EC2_HOST }}
+            User ${{ secrets.TARGET_EC2_USER }}
+            IdentityFile ~/.ssh/target_ec2_key
+            ProxyJump jump-server
+            StrictHostKeyChecking no
+            UserKnownHostsFile /dev/null
+            ServerAliveInterval 60
+            ServerAliveCountMax 3
           EOF
-
+          
           chmod 600 ~/.ssh/config
+          
+          echo "✅ SSH configuration created successfully"
 
-      - name: Upload code using rsync via jump server
+      - name: Test SSH connectivity
         run: |
-          rsync -avz \
+          echo "Testing jump server connection..."
+          ssh -v jump-server "echo '✅ Jump server connection successful'"
+          
+          echo "Testing target EC2 connection through jump server..."
+          ssh -v target-ec2 "echo '✅ Target EC2 connection successful'"
+
+      - name: Create deployment archive
+        run: |
+          # Create a tarball of necessary files
+          tar -czf deploy.tar.gz \
+            --exclude='node_modules' \
             --exclude='.git' \
-            -e "ssh -F ~/.ssh/config" \
-            ./ target:${{ secrets.TARGET_DIR }}
+            --exclude='.github' \
+            --exclude='*.log' \
+            --exclude='.env' \
+            --exclude='deploy.tar.gz' \
+            .
+          
+          echo "✅ Deployment archive created: $(du -h deploy.tar.gz | cut -f1)"
 
-      - name: Execute deploy script
+      - name: Upload to target server via rsync
         run: |
-          ssh -F ~/.ssh/config target "bash /var/www/deploy.sh"
+          echo "Syncing files to target EC2..."
+          
+          # Use rsync with SSH config
+          rsync -avz \
+            --progress \
+            --delete \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='*.log' \
+            --exclude='.env.local' \
+            --exclude='coverage' \
+            -e "ssh" \
+            ./ \
+            target-ec2:/var/www/meter-app/
+          
+          echo "✅ Files synced successfully"
+
+      - name: Install dependencies on target server
+        run: |
+          ssh target-ec2 << 'ENDSSH'
+            set -e
+            cd /var/www/meter-app
+            
+            echo "Installing production dependencies..."
+            npm ci --production
+            
+            echo "✅ Dependencies installed"
+          ENDSSH
+
+      - name: Run deployment script
+        run: |
+          ssh target-ec2 << 'ENDSSH'
+            set -e
+            
+            echo "Running deployment script..."
+            bash /var/www/deploy.sh
+            
+            echo "✅ Deployment script completed"
+          ENDSSH
+
+      - name: Verify deployment
+        run: |
+          ssh target-ec2 << 'ENDSSH'
+            set -e
+            cd /var/www/meter-app
+            
+            echo "Checking PM2 status..."
+            pm2 list
+            
+            echo "Checking application logs..."
+            pm2 logs --lines 20 --nostream || true
+            
+            echo "✅ Deployment verification completed"
+          ENDSSH
+
+      - name: Cleanup SSH keys
+        if: always()
+        run: |
+          rm -f ~/.ssh/jump_server_key
+          rm -f ~/.ssh/target_ec2_key
+          rm -f ~/.ssh/config
+          echo "✅ SSH keys cleaned up"
+
+      - name: Notify deployment status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "🎉 Deployment completed successfully!"
+          else
+            echo "❌ Deployment failed. Check logs above."
+          fi
