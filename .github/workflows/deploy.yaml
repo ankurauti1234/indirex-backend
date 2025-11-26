@@ -117,6 +117,21 @@ jobs:
           
           echo "✅ Files synced successfully"
 
+      - name: Create .env file on target server
+        run: |
+          ssh target-ec2 << 'ENDSSH'
+            set -e
+            cd /var/www/meter-app
+            
+            echo "Creating .env file..."
+            cat > .env << 'ENVEOF'
+          ${{ secrets.ENV_FILE }}
+          ENVEOF
+            
+            chmod 600 .env
+            echo "✅ .env file created"
+          ENDSSH
+
       - name: Install dependencies on target server
         run: |
           ssh target-ec2 << 'ENDSSH'

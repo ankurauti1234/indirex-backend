@@ -3,6 +3,7 @@ import { Request, Response } from "express";
 import { OtaService } from "../../services/ota/ota.service";
 import { sendSuccess, sendError } from "../../utils/response";
 import multer from "multer";
+import { env } from "../../config/env";
 
 const upload = multer({
   dest: "uploads/",
@@ -28,7 +29,7 @@ export const createJob = [
       const { version, bucketName, thingGroupName, thingNames, downloadPath } = req.body;
       const job = await service.createOtaJob(req.file, req.user, {
         version,
-        bucketName: bucketName || process.env.DEFAULT_S3_BUCKET!,
+        bucketName: bucketName || env.aws.defaultBucket,
         thingGroupName,
         thingNames,
         downloadPath,
