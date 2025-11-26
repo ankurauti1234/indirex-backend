@@ -44,33 +44,42 @@ const aws_sdk_1 = __importDefault(require("aws-sdk"));
 const uuid_1 = require("uuid");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const s3 = new aws_sdk_1.default.S3({ region: process.env.AWS_REGION });
-const iot = new aws_sdk_1.default.Iot({ region: process.env.AWS_REGION });
+const env_1 = require("../../config/env");
+const s3 = new aws_sdk_1.default.S3({ region: env_1.env.aws.region });
+const iot = new aws_sdk_1.default.Iot({ region: env_1.env.aws.region });
 class OtaService {
     repo = connection_1.AppDataSource.getRepository(OtaJob_1.OtaJob);
     async uploadToS3(bucket, key, body, contentType) {
-        const result = await s3.upload({ Bucket: bucket, Key: key, Body: body, ContentType: contentType }).promise();
+        const result = await s3
+            .upload({ Bucket: bucket, Key: key, Body: body, ContentType: contentType })
+            .promise();
         return result.Location;
     }
     async createIotJob(s3Uri, targets) {
-        return await iot.createJob({
+        return await iot
+            .createJob({
             jobId: `job-${(0, uuid_1.v4)().replace(/-/g, "")}`,
             targets,
             documentSource: s3Uri,
-        }).promise();
+        })
+            .promise();
     }
     async createOtaJob(file, user, payload) {
         const { version, bucketName, thingGroupName, thingNames, downloadPath } = payload;
         if (!downloadPath?.trim())
             throw new Error("downloadPath required");
         const targets = [];
-        const region = process.env.AWS_REGION;
-        const accountId = process.env.AWS_ACCOUNT_ID || "*";
+        const region = env_1.env.aws.region;
+        const accountId = env_1.env.aws.accountId || "*";
         if (thingGroupName) {
             targets.push(`arn:aws:iot:${region}:${accountId}:thinggroup/${thingGroupName}`);
         }
         if (thingNames) {
-            thingNames.split(",").map(n => n.trim()).filter(n => n).forEach(name => {
+            thingNames
+                .split(",")
+                .map(n => n.trim())
+                .filter(n => n)
+                .forEach(name => {
                 targets.push(`arn:aws:iot:${region}:${accountId}:thing/${name}`);
             });
         }
@@ -81,7 +90,11 @@ class OtaService {
         const updateKey = `updates/${(0, uuid_1.v4)()}${ext}`;
         const jobKey = `job-documents/${(0, uuid_1.v4)()}-job.json`;
         const updateUrl = await this.uploadToS3(bucketName, updateKey, fileBuffer, file.mimetype);
-        const jobDoc = { operation: "download-file", url: updateUrl, path: downloadPath.trim() };
+        const jobDoc = {
+            operation: "download-file",
+            url: updateUrl,
+            path: downloadPath.trim(),
+        };
         const jobS3Location = await this.uploadToS3(bucketName, jobKey, Buffer.from(JSON.stringify(jobDoc, null, 2)), "application/json");
         const jobResult = await this.createIotJob(`s3://${bucketName}/${jobKey}`, targets);
         const otaJob = this.repo.create({
@@ -96,7 +109,7 @@ class OtaService {
             jobId: jobResult.jobId,
             jobArn: jobResult.jobArn,
             status: OtaJob_1.OtaJobStatus.PENDING,
-            userId: user.id, // string (UUID)
+            userId: user.id,
         });
         await this.repo.save(otaJob);
         fs.unlinkSync(file.path);
@@ -109,7 +122,15 @@ class OtaService {
             take: limit,
             skip: (page - 1) * limit,
         });
-        return { jobs, pagination: { page, limit, total, pages: Math.ceil(total / limit) } };
+        return {
+            jobs,
+            pagination: {
+                page,
+                limit,
+                total,
+                pages: Math.ceil(total / limit),
+            },
+        };
     }
 }
 exports.OtaService = OtaService;

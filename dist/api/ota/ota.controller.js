@@ -4,10 +4,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getMyJobs = exports.createJob = void 0;
-const { env } = require("../../config/env");
 const ota_service_1 = require("../../services/ota/ota.service");
 const response_1 = require("../../utils/response");
 const multer_1 = __importDefault(require("multer"));
+const env_1 = require("../../config/env");
 const upload = (0, multer_1.default)({
     dest: "uploads/",
     limits: { fileSize: 100 * 1024 * 1024 },
@@ -32,7 +32,7 @@ exports.createJob = [
             const { version, bucketName, thingGroupName, thingNames, downloadPath } = req.body;
             const job = await service.createOtaJob(req.file, req.user, {
                 version,
-                bucketName: bucketName || env.aws.defaultBucket,
+                bucketName: bucketName || env_1.env.aws.defaultBucket,
                 thingGroupName,
                 thingNames,
                 downloadPath,

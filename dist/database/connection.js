@@ -35,25 +35,21 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppDataSource = void 0;
 require("reflect-metadata");
-const dotenv = __importStar(require("dotenv"));
-dotenv.config();
 const typeorm_1 = require("typeorm");
 const entities = __importStar(require("./entities"));
+const env_1 = require("../config/env");
 exports.AppDataSource = new typeorm_1.DataSource({
     type: "postgres",
-    host: process.env.POSTGRES_HOST,
-    port: Number(process.env.POSTGRES_PORT),
-    username: process.env.POSTGRES_USER,
-    password: process.env.POSTGRES_PASSWORD,
-    database: process.env.POSTGRES_DB,
-    // REQUIRED FOR RDS
+    host: env_1.env.postgres.host,
+    port: env_1.env.postgres.port,
+    username: env_1.env.postgres.user,
+    password: env_1.env.postgres.password,
+    database: env_1.env.postgres.database,
     ssl: {
-        rejectUnauthorized: false, // Allows self-signed certs (common on RDS)
+        rejectUnauthorized: false,
     },
-    // DEV ONLY – remove in prod and use migrations
-    synchronize: false,
-    //   synchronize: process.env.NODE_ENV !== "production",
-    logging: process.env.NODE_ENV === "development",
+    synchronize: false, // keep as you want
+    logging: env_1.env.nodeEnv === "development",
     entities: Object.values(entities),
     migrations: ["src/database/migrations/**/*.ts"],
 });

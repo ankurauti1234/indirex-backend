@@ -26,7 +26,7 @@ class MqttDecommissionClient {
 
     const { key, cert, ca } = this.getCertPaths();
 
-    console.log("Connecting to AWS IoT Core →", env.aws.awsIotEndpoint);
+    console.log("Connecting to AWS IoT Core →", env.aws.iotEndpoint);
     console.log("Using cert:", cert);
     console.log("Using key:", key);
 
@@ -45,7 +45,7 @@ class MqttDecommissionClient {
         secureProtocol: "TLSv1_2_method", // Critical for ap-south-1
       } as mqtt.IClientOptions;
 
-      const client = mqtt.connect(`mqtts://${env.aws.awsIotEndpoint}`, connectOpts);
+      const client = mqtt.connect(`mqtts://${env.aws.iotEndpoint}`, connectOpts);
 
       const timeout = setTimeout(() => reject(new Error("MQTT connection timeout")), 20000);
 

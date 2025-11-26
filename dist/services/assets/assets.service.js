@@ -45,7 +45,8 @@ const csv_parser_1 = __importDefault(require("csv-parser"));
 const xlsx_1 = __importDefault(require("xlsx"));
 const stream = __importStar(require("stream"));
 const typeorm_1 = require("typeorm");
-const iot = new aws_sdk_1.default.Iot({ region: process.env.AWS_REGION || "ap-south-1" });
+const env_1 = require("../../config/env");
+const iot = new aws_sdk_1.default.Iot({ region: env_1.env.aws.region || "ap-south-1" });
 // IoT groups configured in your AWS account
 const IOT_GROUPS = ["armenia_meter"];
 class AssetsService {

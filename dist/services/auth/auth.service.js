@@ -93,7 +93,7 @@ class AuthService {
     }
     // 4. REFRESH TOKEN
     async refreshToken(refreshToken, res) {
-        const payload = (0, jwt_1.verifyToken)(refreshToken, env_1.env.jwtRefreshSecret);
+        const payload = (0, jwt_1.verifyToken)(refreshToken, env_1.env.jwt.refreshSecret);
         const tokenRecord = await this.refreshRepo.findOne({
             where: {
                 token: refreshToken,

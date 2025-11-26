@@ -125,7 +125,7 @@ export class AuthService {
 
   // 4. REFRESH TOKEN
   async refreshToken(refreshToken: string, res: any) {
-    const payload = verifyToken<RefreshPayload>(refreshToken, env.jwtRefreshSecret);
+    const payload = verifyToken<RefreshPayload>(refreshToken, env.jwt.refreshSecret);
 
     const tokenRecord = await this.refreshRepo.findOne({
       where: {
