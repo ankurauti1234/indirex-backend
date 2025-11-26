@@ -1,4 +1,7 @@
 "use strict";
+
+const { env } = require("../../config/env");
+
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -8,7 +11,7 @@ exports.createOtaJobSchema = void 0;
 const joi_1 = __importDefault(require("joi"));
 exports.createOtaJobSchema = joi_1.default.object({
     version: joi_1.default.string().required(),
-    bucketName: joi_1.default.string().default(process.env.DEFAULT_S3_BUCKET),
+    bucketName: joi_1.default.string().default(env.aws.defaultBucket),
     thingGroupName: joi_1.default.string().optional(),
     thingNames: joi_1.default.string().optional(),
     downloadPath: joi_1.default.string().min(1).required(),

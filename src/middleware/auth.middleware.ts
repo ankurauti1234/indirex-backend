@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { AppDataSource } from "../database/connection";
 import { User } from "../database/entities/User";
 import { sendError } from "../utils/response";
+import { env } from "../config/env";
 
 declare global {
   namespace Express {
@@ -16,22 +17,33 @@ declare global {
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
   let token: string | undefined;
 
+  // Check Authorization header
   if (req.headers.authorization?.startsWith("Bearer")) {
     token = req.headers.authorization.split(" ")[1];
-  } else if (req.signedCookies?.access_token) {
+  }
+
+  // Check signed cookies
+  else if (req.signedCookies?.access_token) {
     token = req.signedCookies.access_token;
   }
 
-  if (!token) return sendError(res, "Not authorized", 401);
+  if (!token) {
+    return sendError(res, "Not authorized", 401);
+  }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
-    const user = await AppDataSource.getRepository(User).findOneBy({ id: decoded.id });
+    const decoded = jwt.verify(token, env.jwt.secret) as { id: string };
 
-    if (!user) return sendError(res, "User no longer exists", 401);
+    const user = await AppDataSource.getRepository(User).findOneBy({
+      id: decoded.id,
+    });
+
+    if (!user) {
+      return sendError(res, "User no longer exists", 401);
+    }
 
     req.user = user;
-    next();
+    return next();
   } catch (e) {
     return sendError(res, "Invalid token", 401);
   }

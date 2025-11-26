@@ -18,16 +18,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build TypeScript
-        run: npm run build
 
       - name: Run tests (optional)
-        run: npm test || echo "No tests configured"
+        run: |
+          npm ci
+          npm test || echo "No tests configured"
         continue-on-error: true
 
       - name: Setup SSH
@@ -119,18 +114,21 @@ jobs:
 
       - name: Create .env file on target server
         run: |
-          ssh target-ec2 << 'ENDSSH'
-            set -e
-            cd /var/www/meter-app
-            
-            echo "Creating .env file..."
-            cat > .env << 'ENVEOF'
+          # Create .env content locally first
+          cat > /tmp/env_file << 'EOF'
           ${{ secrets.ENV_FILE }}
-          ENVEOF
-            
-            chmod 600 .env
-            echo "✅ .env file created"
-          ENDSSH
+          EOF
+          
+          # Upload .env file via scp
+          scp /tmp/env_file target-ec2:/var/www/meter-app/.env
+          
+          # Set permissions
+          ssh target-ec2 "chmod 600 /var/www/meter-app/.env"
+          
+          # Cleanup local temp file
+          rm /tmp/env_file
+          
+          echo "✅ .env file uploaded and secured"
 
       - name: Install dependencies on target server
         run: |
@@ -138,10 +136,13 @@ jobs:
             set -e
             cd /var/www/meter-app
             
-            echo "Installing production dependencies..."
-            npm ci --production
+            echo "Installing ALL dependencies (including dev for build)..."
+            npm ci
             
-            echo "✅ Dependencies installed"
+            echo "Building TypeScript on server..."
+            npm run build
+            
+            echo "✅ Dependencies installed and built"
           ENDSSH
 
       - name: Run deployment script
@@ -185,4 +186,4 @@ jobs:
             echo "🎉 Deployment completed successfully!"
           else
             echo "❌ Deployment failed. Check logs above."
-          fi
+          fi  

@@ -6,8 +6,9 @@ import csv from "csv-parser";
 import XLSX from "xlsx";
 import * as stream from "stream";
 import { In } from "typeorm";
+import { env } from "../../config/env";
 
-const iot = new AWS.Iot({ region: process.env.AWS_REGION || "ap-south-1" });
+const iot = new AWS.Iot({ region: env.aws.region || "ap-south-1" });
 
 // IoT groups configured in your AWS account
 const IOT_GROUPS = ["armenia_meter"];

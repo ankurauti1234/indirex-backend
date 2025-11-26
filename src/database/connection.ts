@@ -1,24 +1,23 @@
 import "reflect-metadata";
-import * as dotenv from "dotenv";
-dotenv.config();
 import { DataSource } from "typeorm";
 import * as entities from "./entities";
+import { env } from "../config/env";
 
 export const AppDataSource = new DataSource({
   type: "postgres",
-  host: process.env.POSTGRES_HOST,
-  port: Number(process.env.POSTGRES_PORT),
-  username: process.env.POSTGRES_USER,
-  password: process.env.POSTGRES_PASSWORD,
-  database: process.env.POSTGRES_DB,
-  // REQUIRED FOR RDS
+  host: env.postgres.host,
+  port: env.postgres.port,
+  username: env.postgres.user,
+  password: env.postgres.password,
+  database: env.postgres.database,
+
   ssl: {
-    rejectUnauthorized: false, // Allows self-signed certs (common on RDS)
+    rejectUnauthorized: false,
   },
-  // DEV ONLY – remove in prod and use migrations
-  synchronize: false,
-//   synchronize: process.env.NODE_ENV !== "production",
-  logging: process.env.NODE_ENV === "development",
+
+  synchronize: false, // keep as you want
+  logging: env.nodeEnv === "development",
+
   entities: Object.values(entities) as Function[],
   migrations: ["src/database/migrations/**/*.ts"],
 });

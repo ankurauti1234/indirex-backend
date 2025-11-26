@@ -8,23 +8,28 @@ import swaggerUi from "swagger-ui-express";
 import * as yaml from "yamljs";
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
+
 import { AppDataSource } from "./database/connection";
 import apiRouter from "./api/index";
 import { errorMiddleware } from "./middleware/error.middleware";
 import { setupRemoteAccessWebSocket } from "./api/remote-access/remote-access.websocket";
+
+// ✅ IMPORT env.ts
+import { env } from "./config/env";
 
 const app = express();
 const httpServer = createServer(app);
 
 // ---------- Middleware ----------
 app.use(helmet());
-const allowedOrigins = process.env.CORS_ORIGINS?.split(",").map(o => o.trim()) || [];
+
+// ⭐ Use CORS from env.ts
+const allowedOrigins = env.cors.origins;
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile app / curl)
-      if (!origin) return callback(null, true);
+      if (!origin) return callback(null, true); // mobile / curl
 
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
@@ -35,10 +40,13 @@ app.use(
     credentials: true,
   })
 );
+
 app.use(morgan("dev"));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser(process.env.COOKIE_SECRET));
+
+// ⭐ Use cookie secret from env.ts
+app.use(cookieParser(env.cookie.secret));
 
 // ---------- Swagger ----------
 const swaggerDoc = yaml.load("./src/docs/swagger.yaml");
@@ -54,15 +62,22 @@ app.get("/health", (_req, res) => res.json({ success: true, msg: "OK" }));
 app.use(errorMiddleware);
 
 // ---------- WebSocket ----------
-const wss = new WebSocketServer({ server: httpServer, path: "/ws/remote-access" });
+const wss = new WebSocketServer({
+  server: httpServer,
+  path: "/ws/remote-access",
+});
 setupRemoteAccessWebSocket(wss);
 
 // ---------- Export ----------
 export const startServer = async () => {
   await AppDataSource.initialize();
   console.log("Data Source has been initialized!");
-  const port = process.env.PORT || 4000;
-  httpServer.listen(port, () => console.log(`Server + WS listening on ${port}`));
+
+  const port = env.port;
+
+  httpServer.listen(port, () =>
+    console.log(`Server + WS listening on ${port}`)
+  );
 };
 
 export default app;

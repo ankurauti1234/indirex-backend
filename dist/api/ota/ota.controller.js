@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getMyJobs = exports.createJob = void 0;
+const { env } = require("../../config/env");
 const ota_service_1 = require("../../services/ota/ota.service");
 const response_1 = require("../../utils/response");
 const multer_1 = __importDefault(require("multer"));
@@ -31,7 +32,7 @@ exports.createJob = [
             const { version, bucketName, thingGroupName, thingNames, downloadPath } = req.body;
             const job = await service.createOtaJob(req.file, req.user, {
                 version,
-                bucketName: bucketName || process.env.DEFAULT_S3_BUCKET,
+                bucketName: bucketName || env.aws.defaultBucket,
                 thingGroupName,
                 thingNames,
                 downloadPath,

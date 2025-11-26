@@ -1,6 +1,4 @@
 import "reflect-metadata";
-import dotenv from "dotenv";
-dotenv.config();
 import { AppDataSource } from "../connection";
 import { User, UserRole } from "../entities/User";
 import { hashPassword } from "../../utils/encryption";
