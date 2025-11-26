@@ -78,19 +78,23 @@ jobs:
           echo "Testing target EC2 connection through jump server..."
           ssh -v target-ec2 "echo '✅ Target EC2 connection successful'"
 
-      - name: Create deployment archive
+      - name: Clean problematic directories on target server
         run: |
-          # Create a tarball of necessary files
-          tar -czf deploy.tar.gz \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='*.log' \
-            --exclude='.env' \
-            --exclude='deploy.tar.gz' \
-            .
-          
-          echo "✅ Deployment archive created: $(du -h deploy.tar.gz | cut -f1)"
+          ssh target-ec2 << 'ENDSSH'
+            set -e
+            echo "Cleaning old deploy directory and fixing permissions..."
+            
+            # Remove old deploy directory if it exists
+            if [ -d "/var/www/meter-app/deploy" ]; then
+              sudo rm -rf /var/www/meter-app/deploy
+              echo "✅ Removed old deploy directory"
+            fi
+            
+            # Ensure proper ownership
+            sudo chown -R $USER:$USER /var/www/meter-app 2>/dev/null || true
+            
+            echo "✅ Directory cleaned and permissions fixed"
+          ENDSSH
 
       - name: Upload to target server via rsync
         run: |
@@ -98,7 +102,6 @@ jobs:
           
           # Use rsync with SSH config
           rsync -avz \
-            --progress \
             --delete \
             --exclude='node_modules' \
             --exclude='.git' \
@@ -106,6 +109,8 @@ jobs:
             --exclude='*.log' \
             --exclude='.env.local' \
             --exclude='coverage' \
+            --exclude='deploy/' \
+            --exclude='deploy.tar.gz' \
             -e "ssh" \
             ./ \
             target-ec2:/var/www/meter-app/
