@@ -31,27 +31,30 @@ class MqttDecommissionClient {
     console.log("Using key:", key);
 
     this.connectPromise = new Promise((resolve, reject) => {
-      const connectOpts = {
-        clientId: "apm-decommission-server",
+      const connectOpts: mqtt.IClientOptions = {
+        clientId: `apm-decommission-server-${Date.now()}`,
         protocol: "mqtts",
+        host: env.aws.iotEndpoint,
         port: 8883,
         key: fs.readFileSync(key),
         cert: fs.readFileSync(cert),
-        ca: fs.readFileSync(ca),
+        ca: [fs.readFileSync(ca)],
         rejectUnauthorized: true,
         clean: true,
         reconnectPeriod: 5000,
+        connectTimeout: 20000,
         keepalive: 60,
-        secureProtocol: "TLSv1_2_method", // Critical for ap-south-1
-      } as mqtt.IClientOptions;
+      };
 
       const client = mqtt.connect(`mqtts://${env.aws.iotEndpoint}`, connectOpts);
 
-      const timeout = setTimeout(() => reject(new Error("MQTT connection timeout")), 20000);
+      const timeout = setTimeout(() => {
+        reject(new Error("MQTT connection timeout after 20s"));
+      }, 20000);
 
       client.once("connect", () => {
         clearTimeout(timeout);
-        console.log("MQTT CONNECTED AND STABLE - READY TO PUBLISH");
+        console.log("MQTT CONNECTED - Ready to publish decommission commands");
         this.client = client;
         this.connectPromise = null;
         resolve(client);
@@ -59,7 +62,7 @@ class MqttDecommissionClient {
 
       client.once("error", (err) => {
         clearTimeout(timeout);
-        console.error("MQTT CONNECT FAILED:", err.message);
+        console.error("MQTT connection error:", err.message);
         this.connectPromise = null;
         reject(err);
       });
@@ -69,61 +72,122 @@ class MqttDecommissionClient {
         this.client = null;
       });
 
-      client.on("offline", () => console.warn("MQTT client offline"));
+      client.on("offline", () => console.warn("MQTT client went offline"));
     });
 
     return this.connectPromise;
   }
 
   /**
-   * Publish decommission command TWICE with 1-second gap
-   * (Many meters need duplicate messages to trigger reliably)
+   * Sends decommission command + waits for device ACK on apm/decommission
    */
-  async publishDecommission(meterId: string): Promise<void> {
-    const topic = `apm/decommission/${meterId}`;
-    const payload = JSON.stringify({
+  async publishDecommissionWithAck(
+    meterId: string,
+    timeoutMs = 30000
+  ): Promise<void> {
+    const requestTopic = `apm/decommission/${meterId}`;
+    const ackTopic = "apm/decommission";
+
+    const basePayload = {
       decommissioning: true,
-      // timestamp: new Date().toISOString(),
-      // source: "apm-backend",
-      // attempt: null as number | null,
-    });
+    };
 
     const client = await this.ensureConnected();
 
-    const publishOnce = (attempt: number): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        const msg = payload.replace('"attempt":null', `"attempt":${attempt}`);
-        client.publish(topic, msg, { qos: 1 }, (err) => {
-          if (err) {
-            console.error(`PUBLISH FAILED (attempt ${attempt}) → ${topic}`, err);
-            reject(err);
-          } else {
-            console.log(`DECOMMISSION COMMAND SENT (attempt ${attempt}) → ${topic}`);
-            resolve();
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let ackReceived = false;
+
+      const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        client.removeAllListeners("message");
+        client.unsubscribe(ackTopic, () => {});
+      };
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error(`No decommission ACK received from meter within ${timeoutMs / 1000}s`));
+      }, timeoutMs);
+
+      // Listen for ACK
+      const onMessage = (topic: string, message: Buffer) => {
+        if (topic !== ackTopic) return;
+
+        let payload;
+        try {
+          payload = JSON.parse(message.toString());
+        } catch (e) {
+          console.error("Invalid JSON in decommission ACK:", message.toString());
+          return; // Ignore malformed messages
+        }
+
+        // Now safely access payload
+        if (payload.meter_id !== meterId) return;
+
+        if (payload.is_decommissioning_success === true) {
+          clearTimeout(timeout);
+          cleanup();
+          console.log(`DECOMMISSION SUCCESS ACK from ${meterId}`);
+          resolve();
+        } else {
+          clearTimeout(timeout);
+          cleanup();
+          reject(new Error("Device reported decommissioning failed"));
+        }
+      };
+
+      client.subscribe(ackTopic, { qos: 1 }, (err) => {
+        if (err) {
+          clearTimeout(timeout);
+          cleanup();
+          return reject(new Error("Failed to subscribe to ACK topic"));
+        }
+        console.log(`Subscribed to ACK topic: ${ackTopic}`);
+      });
+
+      client.on("message", onMessage);
+
+      // Publish command twice with 1s delay
+      const publishAttempt = (attempt: number) => {
+        return new Promise<void>((res, rej) => {
+          const payload = JSON.stringify({
+            ...basePayload,
+            attempt,
+          });
+
+          client.publish(requestTopic, payload, { qos: 1 }, (err) => {
+            if (err) {
+              console.error(`Publish failed (attempt ${attempt}) to ${meterId}:`, err.message);
+              rej(err);
+            } else {
+              console.log(`Decommission command sent (attempt ${attempt}) → ${meterId}`);
+              res();
+            }
+          });
+        });
+      };
+
+      // Send first, wait 1s, send second
+      publishAttempt(1)
+        .then(() => new Promise(r => setTimeout(r, 1000)))
+        .then(() => publishAttempt(2))
+        .catch((err) => {
+          if (!settled) {
+            clearTimeout(timeout);
+            cleanup();
+            reject(new Error(`Failed to send decommission command: ${err.message}`));
           }
         });
-      });
-    };
-
-    try {
-      // First publish
-      await publishOnce(1);
-
-      // Wait 1 second
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Second publish
-      await publishOnce(2);
-
-      console.log(`DECOMMISSION COMMAND SUCCESSFULLY SENT TWICE → ${meterId}`);
-    } catch (err) {
-      console.error("One or both publish attempts failed for", meterId);
-      throw err; // Let caller know
-    }
+    });
   }
 }
 
-// Singleton
+// Singleton instance
 const mqttClient = new MqttDecommissionClient();
-export const publishDecommission = (meterId: string): Promise<void> =>
-  mqttClient.publishDecommission(meterId);
+
+// Export function used by service
+export const publishDecommissionWithAck = (
+  meterId: string,
+  timeoutMs?: number
+): Promise<void> => mqttClient.publishDecommissionWithAck(meterId, timeoutMs);

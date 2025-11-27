@@ -31,7 +31,7 @@ export const decommissionMeter = async (req: Request, res: Response) => {
       decommissionedBy: req.user.id,
     });
 
-    sendSuccess(res, result, "Meter decommissioned successfully", 200);
+    sendSuccess(res, result, "Meter decommissioned and confirmed by device", 200);
   } catch (e: any) {
     sendError(res, e.message, 400);
   }
