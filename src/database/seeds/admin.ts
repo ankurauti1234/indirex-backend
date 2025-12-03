@@ -15,11 +15,11 @@ export const seedAdmin = async () => {
     return;
   }
 
-  const hash = await hashPassword("Admin123!");
+  const hash = await hashPassword("Guest123!");
   await repo.insert({
-    email: "admin@inditronics.com",
+    email: "guest@inditronics.com",
     password: hash,
-    name: "Indirex Admin",
+    name: "Indirex Guest",
     role: UserRole.ADMIN
   });
 

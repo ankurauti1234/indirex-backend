@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "@aws-sdk/client-iot": "^3.940.0",
     "@types/express": "^5.0.5",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.9.2",

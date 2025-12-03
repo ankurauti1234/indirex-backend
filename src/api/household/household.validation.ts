@@ -1,4 +1,3 @@
-// src/api/household/household.validation.ts
 import Joi from "joi";
 
 export const listHouseholdsSchema = Joi.object({
@@ -12,4 +11,8 @@ export const listHouseholdsSchema = Joi.object({
 
 export const updateContactSchema = Joi.object({
   contactEmail: Joi.string().email().required(),
+});
+
+export const uploadMembersSchema = Joi.object({
+  householdId: Joi.string().uuid().required(),
 });

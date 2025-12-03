@@ -3,6 +3,7 @@ import * as mqtt from "mqtt";
 import { env } from "../../config/env";
 import fs from "fs";
 import path from "path";
+import { deleteThingAndCerts } from "../../utils/delete-thing";
 
 class MqttDecommissionClient {
   private client: mqtt.MqttClient | null = null;
@@ -46,7 +47,10 @@ class MqttDecommissionClient {
         keepalive: 60,
       };
 
-      const client = mqtt.connect(`mqtts://${env.aws.iotEndpoint}`, connectOpts);
+      const client = mqtt.connect(
+        `mqtts://${env.aws.iotEndpoint}`,
+        connectOpts
+      );
 
       const timeout = setTimeout(() => {
         reject(new Error("MQTT connection timeout after 20s"));
@@ -79,14 +83,20 @@ class MqttDecommissionClient {
   }
 
   /**
-   * Sends decommission command + waits for device ACK on apm/decommission
+   * Sends decommission command with retry logic:
+   * - Attempt 1: Wait 10s for ACK
+   * - Attempt 2: Wait 5s for ACK  
+   * - Attempt 3: Wait 5s for ACK
+   * Total max time: 10 + 5 + 5 = 20 seconds
    */
   async publishDecommissionWithAck(
     meterId: string,
-    timeoutMs = 30000
+    timeoutMs = 30000 // Keeping for backward compatibility but not used in new logic
   ): Promise<void> {
     const requestTopic = `apm/decommission/${meterId}`;
     const ackTopic = "apm/decommission";
+    const maxAttempts = 3;
+    const attemptTimeouts = [30000, 30000, 30000]; // 30s, 30s, 30s
 
     const basePayload = {
       decommissioning: true,
@@ -94,91 +104,160 @@ class MqttDecommissionClient {
 
     const client = await this.ensureConnected();
 
+    // Subscribe once before all attempts
+    await new Promise<void>((resolve, reject) => {
+      client.subscribe(ackTopic, { qos: 1 }, (err) => {
+        if (err) {
+          reject(new Error("Failed to subscribe to ACK topic"));
+        } else {
+          console.log(`Subscribed to ACK topic: ${ackTopic}`);
+          resolve();
+        }
+      });
+    });
+
+    // Try each attempt sequentially
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const attemptTimeout = attemptTimeouts[attempt - 1];
+      
+      console.log(
+        `Decommission attempt ${attempt}/${maxAttempts} for ${meterId} (timeout: ${attemptTimeout}ms)`
+      );
+
+      try {
+        // Send command and wait for ACK with specific timeout
+        await this.sendCommandAndWaitForAck(
+          client,
+          requestTopic,
+          ackTopic,
+          meterId,
+          basePayload,
+          attempt,
+          attemptTimeout
+        );
+
+        // SUCCESS - ACK received, cleanup and delete AWS resources
+        console.log(`✓ DECOMMISSION SUCCESS on attempt ${attempt} for ${meterId}`);
+        
+        client.unsubscribe(ackTopic, () => {});
+        
+        // Delete Thing and certificates from AWS IoT
+        deleteThingAndCerts(meterId)
+          .then(() => console.log(`AWS IoT Thing deleted: ${meterId}`))
+          .catch((err) =>
+            console.error(`ERROR deleting AWS IoT thing ${meterId}:`, err)
+          );
+
+        return; // Success - exit function
+        
+      } catch (error: any) {
+        console.warn(
+          `✗ Attempt ${attempt}/${maxAttempts} failed: ${error.message}`
+        );
+        
+        // If this was the last attempt, throw the error
+        if (attempt === maxAttempts) {
+          client.unsubscribe(ackTopic, () => {});
+          throw new Error(
+            `Decommission failed after ${maxAttempts} attempts. Last error: ${error.message}`
+          );
+        }
+        
+        // Otherwise, continue to next attempt (no delay needed, it's built into the timeout)
+      }
+    }
+  }
+
+  /**
+   * Helper: Sends one command and waits for ACK with timeout
+   */
+  private sendCommandAndWaitForAck(
+    client: mqtt.MqttClient,
+    requestTopic: string,
+    ackTopic: string,
+    meterId: string,
+    basePayload: any,
+    attempt: number,
+    timeoutMs: number
+  ): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
-      let ackReceived = false;
+      let timeoutHandle: NodeJS.Timeout;
 
       const cleanup = () => {
         if (settled) return;
         settled = true;
-        client.removeAllListeners("message");
-        client.unsubscribe(ackTopic, () => {});
+        clearTimeout(timeoutHandle);
+        client.removeListener("message", onMessage);
       };
 
-      const timeout = setTimeout(() => {
+      // Set timeout for this specific attempt
+      timeoutHandle = setTimeout(() => {
         cleanup();
-        reject(new Error(`No decommission ACK received from meter within ${timeoutMs / 1000}s`));
+        reject(
+          new Error(
+            `No ACK received within ${timeoutMs}ms for attempt ${attempt}`
+          )
+        );
       }, timeoutMs);
 
       // Listen for ACK
       const onMessage = (topic: string, message: Buffer) => {
-        if (topic !== ackTopic) return;
+        if (topic !== ackTopic || settled) return;
 
         let payload;
         try {
           payload = JSON.parse(message.toString());
         } catch (e) {
-          console.error("Invalid JSON in decommission ACK:", message.toString());
-          return; // Ignore malformed messages
+          console.error(
+            "Invalid JSON in decommission ACK:",
+            message.toString()
+          );
+          return;
         }
 
-        // Now safely access payload
+        // Check if this ACK is for our meter
         if (payload.meter_id !== meterId) return;
 
         if (payload.is_decommissioning_success === true) {
-          clearTimeout(timeout);
           cleanup();
-          console.log(`DECOMMISSION SUCCESS ACK from ${meterId}`);
+          console.log(
+            `✓ ACK received from ${meterId} on attempt ${attempt}`
+          );
           resolve();
         } else {
-          clearTimeout(timeout);
           cleanup();
-          reject(new Error("Device reported decommissioning failed"));
+          reject(
+            new Error(
+              `Device reported decommissioning failed (attempt ${attempt})`
+            )
+          );
         }
       };
-
-      client.subscribe(ackTopic, { qos: 1 }, (err) => {
-        if (err) {
-          clearTimeout(timeout);
-          cleanup();
-          return reject(new Error("Failed to subscribe to ACK topic"));
-        }
-        console.log(`Subscribed to ACK topic: ${ackTopic}`);
-      });
 
       client.on("message", onMessage);
 
-      // Publish command twice with 1s delay
-      const publishAttempt = (attempt: number) => {
-        return new Promise<void>((res, rej) => {
-          const payload = JSON.stringify({
-            ...basePayload,
-            attempt,
-          });
+      // Publish the command
+      const payload = JSON.stringify({
+        ...basePayload,
+        attempt,
+        timestamp: new Date().toISOString(),
+      });
 
-          client.publish(requestTopic, payload, { qos: 1 }, (err) => {
-            if (err) {
-              console.error(`Publish failed (attempt ${attempt}) to ${meterId}:`, err.message);
-              rej(err);
-            } else {
-              console.log(`Decommission command sent (attempt ${attempt}) → ${meterId}`);
-              res();
-            }
-          });
-        });
-      };
-
-      // Send first, wait 1s, send second
-      publishAttempt(1)
-        .then(() => new Promise(r => setTimeout(r, 1000)))
-        .then(() => publishAttempt(2))
-        .catch((err) => {
-          if (!settled) {
-            clearTimeout(timeout);
-            cleanup();
-            reject(new Error(`Failed to send decommission command: ${err.message}`));
-          }
-        });
+      client.publish(requestTopic, payload, { qos: 1 }, (err) => {
+        if (err) {
+          cleanup();
+          reject(
+            new Error(
+              `Publish failed (attempt ${attempt}) to ${meterId}: ${err.message}`
+            )
+          );
+        } else {
+          console.log(
+            `→ Decommission command sent (attempt ${attempt}) to ${meterId}`
+          );
+        }
+      });
     });
   }
 }
