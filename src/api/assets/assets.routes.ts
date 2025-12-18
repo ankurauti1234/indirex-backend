@@ -21,7 +21,7 @@ import {
   updateMeterSchema,
 } from "./assets.validation";
 import Joi from "joi";
-
+ 
 const router = Router();
 
 router.use(protect, authorize(UserRole.ADMIN, UserRole.DEVELOPER));
@@ -49,7 +49,7 @@ router.delete(
     params: Joi.object({ meterId: Joi.string().required() }),
   }),
   deleteMeter
-);
+); 
 
 // GET /assets/groups
 router.get("/groups", validationMiddleware({ query: groupsSchema }), getThingGroups);

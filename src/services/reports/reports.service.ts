@@ -19,7 +19,7 @@ export interface PaginatedEvents {
     page: number;
     limit: number;
     total: number;
-    pages: number;
+    pages: number; 
   };
 }
 

@@ -14,3 +14,12 @@ export const updateEventMappingSchema = createEventMappingSchema.fork(
   ["type", "name"],
   (schema) => schema.optional()
 );
+
+export const eventMappingFilterSchema = Joi.object({
+  search: Joi.string().optional(),
+  is_alert: Joi.boolean().optional(),
+  severity: Joi.string().valid("low", "medium", "high", "critical").optional(),
+  enabled: Joi.boolean().optional(),
+  page: Joi.number().default(1),
+  limit: Joi.number().default(25),
+});

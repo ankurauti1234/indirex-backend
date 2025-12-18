@@ -15,4 +15,4 @@ export interface PaginatedEvents {
     total: number;
     pages: number;
   };
-}
+} 

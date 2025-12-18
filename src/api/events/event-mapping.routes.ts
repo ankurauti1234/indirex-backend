@@ -11,12 +11,17 @@ import { validationMiddleware } from "../../middleware/validation.middleware";
 import {
   createEventMappingSchema,
   updateEventMappingSchema,
+  eventMappingFilterSchema,
 } from "./event-mapping.validation";
 import Joi from "joi";
 
 const router = Router();
 
-router.get("/", getEventMappings);
+router.get(
+  "/",
+  validationMiddleware({ query: eventMappingFilterSchema }),
+  getEventMappings
+);
 
 router.get(
   "/:id",

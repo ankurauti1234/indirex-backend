@@ -42,3 +42,26 @@ export const sendAccountCreationEmail = async (
     html,
   });
 };
+
+export const sendNewPassword = async (to: string, tempPassword: string) => {
+  const templatePath = path.join(
+    __dirname,
+    "../templates/email/account-creation.hbs"
+  );
+
+  const source = await readFile(templatePath, "utf-8");
+  const template = handlebars.compile(source);
+
+  const html = template({
+    email: to,
+    tempPassword,
+    appUrl: env.appUrl,
+  });
+
+  await transporter.sendMail({
+    from: `"Meter Monitoring" <${env.smtp.from}>`,
+    to,
+    subject: "Your New Password",
+    html,
+  });
+};

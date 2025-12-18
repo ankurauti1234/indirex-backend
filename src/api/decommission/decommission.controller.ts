@@ -20,16 +20,16 @@ export const getAssignedMeters = async (req: Request, res: Response) => {
     sendError(res, e.message, 400);
   }
 };
-
+ 
 export const decommissionMeter = async (req: Request, res: Response) => {
   try {
     const dto = req.body;
     if (!req.user?.id) throw new Error("Unauthorized");
-
+ 
     const result = await service.decommissionMeter({
       ...dto,
       decommissionedBy: req.user.id,
-    });
+    }); 
 
     sendSuccess(res, result, "Meter decommissioned and confirmed by device", 200);
   } catch (e: any) {

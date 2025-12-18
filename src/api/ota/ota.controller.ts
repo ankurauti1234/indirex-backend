@@ -9,7 +9,11 @@ const upload = multer({
   dest: "uploads/",
   limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype === "application/octet-stream" || file.mimetype.startsWith("application/") || file.mimetype.startsWith("text/")) {
+    if (
+      file.mimetype === "application/octet-stream" ||
+      file.mimetype.startsWith("application/") ||
+      file.mimetype.startsWith("text/")
+    ) {
       cb(null, true);
     } else {
       cb(new Error("Invalid file type"));
@@ -26,7 +30,8 @@ export const createJob = [
       if (!req.file) throw new Error("No file uploaded");
       if (!req.user) throw new Error("Unauthorized");
 
-      const { version, bucketName, thingGroupName, thingNames, downloadPath } = req.body;
+      const { version, bucketName, thingGroupName, thingNames, downloadPath } =
+        req.body;
       const job = await service.createOtaJob(req.file, req.user, {
         version,
         bucketName: bucketName || env.aws.defaultBucket,
@@ -45,9 +50,22 @@ export const createJob = [
 export const getMyJobs = async (req: Request, res: Response) => {
   try {
     if (!req.user) throw new Error("Unauthorized");
+
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 10, 50);
-    const data = await service.getJobsByUser(req.user.id, page, limit);
+    const search = req.query.search
+      ? (req.query.search as string).trim()
+      : undefined;
+    // If search is empty string after trim, treat as no search
+    const searchTerm = search === "" ? undefined : search;
+
+    const data = await service.getJobsByUser(
+      req.user.id,
+      page,
+      limit,
+      searchTerm
+    );
+
     sendSuccess(res, data, "Your OTA jobs");
   } catch (e: any) {
     sendError(res, e.message, 400);

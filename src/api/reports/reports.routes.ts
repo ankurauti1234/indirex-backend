@@ -13,4 +13,4 @@ router.use(protect, authorize(UserRole.ADMIN, UserRole.DEVELOPER));
 
 router.get("/", validationMiddleware({ query: reportQuerySchema }), getReport);
 
-export default router;
+export default router; 

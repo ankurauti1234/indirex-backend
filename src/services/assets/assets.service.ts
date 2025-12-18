@@ -16,7 +16,13 @@ const IOT_GROUPS = ["armenia_meter"];
 export interface MeterFilters {
   page: number;
   limit: number;
+  meterId?: string;
+  status?: IotMeterStatus;
+  powerHATStatus?: string;
+  groupName?: string;
+  meterType?: string;
 }
+
 
 export interface EnrichedMeter {
   meterId: string;
@@ -178,11 +184,47 @@ export class AssetsService {
     const limit = Math.min(Number(filters.limit) || 10, 100);
     const skip = (page - 1) * limit;
 
-    const [meters, total] = await this.meterRepo.findAndCount({
-      order: { createdAt: "DESC" },
-      take: limit,
-      skip,
-    });
+    const qb = this.meterRepo.createQueryBuilder("meter");
+
+    // 🔹 meterId filter
+    if (filters.meterId) {
+      qb.andWhere("meter.meterId ILIKE :meterId", {
+        meterId: `%${filters.meterId}%`,
+      });
+    }
+
+    // 🔹 power HAT filter
+    if (filters.powerHATStatus) {
+      qb.andWhere("meter.powerHATStatus = :powerHATStatus", {
+        powerHATStatus: filters.powerHATStatus,
+      });
+    }
+
+    // 🔹 meterType filter
+    if (filters.meterType) {
+      qb.andWhere("meter.meterType = :meterType", {
+        meterType: filters.meterType,
+      });
+    }
+
+    // 🔹 join iot_meters only if needed
+    if (filters.status || filters.groupName) {
+      qb.leftJoin(IotMeter, "iot", "iot.meterId = meter.meterId");
+
+      if (filters.status) {
+        qb.andWhere("iot.status = :status", { status: filters.status });
+      }
+
+      if (filters.groupName) {
+        qb.andWhere("iot.groupName = :groupName", {
+          groupName: filters.groupName,
+        });
+      }
+    }
+
+    qb.orderBy("meter.createdAt", "DESC").skip(skip).take(limit);
+
+    const [meters, total] = await qb.getManyAndCount();
 
     const iotMeters = await this.iotMeterRepo.find({
       where: { meterId: In(meters.map((m) => m.meterId)) },
@@ -195,7 +237,7 @@ export class AssetsService {
       ])
     );
 
-    const enriched: EnrichedMeter[] = meters.map((m) => ({
+    const enriched = meters.map((m) => ({
       meterId: m.meterId,
       assignedHouseholdId: m.assignedHouseholdId,
       isAssigned: m.isAssigned,
@@ -234,8 +276,10 @@ export class AssetsService {
     if (!meter) throw new Error("Meter not found");
 
     if (data.meterType !== undefined) meter.meterType = data.meterType;
-    if (data.assetSerialNumber !== undefined) meter.assetSerialNumber = data.assetSerialNumber;
-    if (data.powerHATStatus !== undefined) meter.powerHATStatus = data.powerHATStatus;
+    if (data.assetSerialNumber !== undefined)
+      meter.assetSerialNumber = data.assetSerialNumber;
+    if (data.powerHATStatus !== undefined)
+      meter.powerHATStatus = data.powerHATStatus;
 
     const updatedMeter = await this.meterRepo.save(meter);
 

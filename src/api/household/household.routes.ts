@@ -35,7 +35,7 @@ router.patch(
 
 // POST /api/households/members/upload
 router.post(
-  "/members/upload",
+  "/members/upload", 
   validationMiddleware({
     body: uploadMembersSchema,
   }),

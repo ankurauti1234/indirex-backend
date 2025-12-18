@@ -7,16 +7,27 @@ import { v4 as uuidv4 } from "uuid";
 import * as fs from "fs";
 import * as path from "path";
 import { env } from "../../config/env";
+import { ILike } from "typeorm"; 
 
-const s3 = new AWS.S3({ region: env.aws.region });
+const s3 = new AWS.S3({ region: env.aws.region }); 
 const iot = new AWS.Iot({ region: env.aws.region });
 
 export class OtaService {
   private repo = AppDataSource.getRepository(OtaJob);
 
-  private async uploadToS3(bucket: string, key: string, body: Buffer, contentType: string) {
+  private async uploadToS3(
+    bucket: string,
+    key: string,
+    body: Buffer,
+    contentType: string
+  ) {
     const result = await s3
-      .upload({ Bucket: bucket, Key: key, Body: body, ContentType: contentType })
+      .upload({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      })
       .promise();
     return result.Location;
   }
@@ -42,7 +53,8 @@ export class OtaService {
       downloadPath: string;
     }
   ) {
-    const { version, bucketName, thingGroupName, thingNames, downloadPath } = payload;
+    const { version, bucketName, thingGroupName, thingNames, downloadPath } =
+      payload;
     if (!downloadPath?.trim()) throw new Error("downloadPath required");
 
     const targets: string[] = [];
@@ -50,15 +62,17 @@ export class OtaService {
     const accountId = env.aws.accountId || "*";
 
     if (thingGroupName) {
-      targets.push(`arn:aws:iot:${region}:${accountId}:thinggroup/${thingGroupName}`);
+      targets.push(
+        `arn:aws:iot:${region}:${accountId}:thinggroup/${thingGroupName}`
+      );
     }
 
     if (thingNames) {
       thingNames
         .split(",")
-        .map(n => n.trim())
-        .filter(n => n)
-        .forEach(name => {
+        .map((n) => n.trim())
+        .filter((n) => n)
+        .forEach((name) => {
           targets.push(`arn:aws:iot:${region}:${accountId}:thing/${name}`);
         });
     }
@@ -70,7 +84,12 @@ export class OtaService {
     const updateKey = `updates/${uuidv4()}${ext}`;
     const jobKey = `job-documents/${uuidv4()}-job.json`;
 
-    const updateUrl = await this.uploadToS3(bucketName, updateKey, fileBuffer, file.mimetype);
+    const updateUrl = await this.uploadToS3(
+      bucketName,
+      updateKey,
+      fileBuffer,
+      file.mimetype
+    );
 
     const jobDoc = {
       operation: "download-file",
@@ -85,7 +104,10 @@ export class OtaService {
       "application/json"
     );
 
-    const jobResult = await this.createIotJob(`s3://${bucketName}/${jobKey}`, targets);
+    const jobResult = await this.createIotJob(
+      `s3://${bucketName}/${jobKey}`,
+      targets
+    );
 
     const otaJob = this.repo.create({
       version,
@@ -107,13 +129,25 @@ export class OtaService {
     return otaJob;
   }
 
-  async getJobsByUser(userId: string, page = 1, limit = 10) {
-    const [jobs, total] = await this.repo.findAndCount({
+  async getJobsByUser(
+    userId: string,
+    page = 1,
+    limit = 10,
+    search?: string // ← new optional parameter
+  ) {
+    const queryOptions: any = {
       where: { userId },
       order: { createdAt: "DESC" },
       take: limit,
       skip: (page - 1) * limit,
-    });
+    };
+
+    // Add version search (case-insensitive partial match)
+    if (search) {
+      queryOptions.where.version = ILike(`%${search}%`);
+    }
+
+    const [jobs, total] = await this.repo.findAndCount(queryOptions);
 
     return {
       jobs,

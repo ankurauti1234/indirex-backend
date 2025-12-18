@@ -41,7 +41,7 @@ export const updatePreassignedContact = async (req: Request, res: Response) => {
 };
 
 export const uploadHouseholdMembers = [
-  upload.single("file"),
+  upload.single("file"), 
   async (req: Request, res: Response) => {
     try {
       if (!req.file) throw new Error("No file uploaded");

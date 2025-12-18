@@ -16,7 +16,7 @@ export const getReport = async (req: Request, res: Response) => {
       }`);
       res.setHeader("Content-Type", format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : `application/${format}`);
     }
-
+ 
     const data = await service.getReport(req.query as any, format as any);
 
     if (format === "json") {

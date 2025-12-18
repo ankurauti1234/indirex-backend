@@ -9,8 +9,9 @@ import {
 
 const service = new EventMappingService();
 
-export const getEventMappings = async (_req: Request, res: Response) => {
-  const mappings = await service.getAll();
+export const getEventMappings = async (req: Request, res: Response) => {
+  const filters = req.query; // Already validated and cleaned by middleware
+  const mappings = await service.getAll(filters);
   sendSuccess(res, mappings, "Event mappings retrieved");
 };
 

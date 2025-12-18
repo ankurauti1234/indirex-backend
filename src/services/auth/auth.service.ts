@@ -11,9 +11,10 @@ import {
   RefreshPayload,
   verifyToken,
 } from "../../config/jwt";
-import { sendAccountCreationEmail } from "../../utils/email";
+import { sendAccountCreationEmail,sendNewPassword } from "../../utils/email";
 import { randomBytes } from "crypto";
 import { MoreThan } from "typeorm";
+import { log } from "console";
 
 interface GetAllUsersParams {
   page: number;
@@ -29,8 +30,6 @@ export class AuthService {
   private userRepo = AppDataSource.getRepository(User);
   private refreshRepo = AppDataSource.getRepository(RefreshToken);
 
-  
-
   // 1. ADMIN: Create user + send temp password
   async createUserByAdmin(dto: {
     email: string;
@@ -45,7 +44,7 @@ export class AuthService {
 
     const user = this.userRepo.create({
       email: dto.email,
-      password: hash,
+      password: tempPassword,
       name: dto.name,
       role: dto.role ?? UserRole.VIEWER,
       isActive: false,
@@ -76,14 +75,14 @@ export class AuthService {
     const refreshToken = generateRefreshToken(refreshPayload);
 
     // Save refresh token
-        // cast to any to satisfy entity partial typing (entity may have different declared types)
-        const tokenRecord = this.refreshRepo.create({
-          token: refreshToken,
-          userId: user.id,           // string (UUID)
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          revoked: false,
-        } as any);
-        await this.refreshRepo.save(tokenRecord);
+    // cast to any to satisfy entity partial typing (entity may have different declared types)
+    const tokenRecord = this.refreshRepo.create({
+      token: refreshToken,
+      userId: user.id, // string (UUID)
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      revoked: false,
+    } as any);
+    await this.refreshRepo.save(tokenRecord);
 
     const isProd = env.nodeEnv === "production";
     res.cookie("access_token", accessToken, {
@@ -113,7 +112,11 @@ export class AuthService {
   }
 
   // 3. CHANGE PASSWORD
-  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+  async changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string
+  ) {
     const user = await this.userRepo.findOneByOrFail({ id: userId });
     const isMatch = await comparePassword(oldPassword, user.password);
     if (!isMatch) throw new Error("Current password is incorrect");
@@ -125,12 +128,15 @@ export class AuthService {
 
   // 4. REFRESH TOKEN
   async refreshToken(refreshToken: string, res: any) {
-    const payload = verifyToken<RefreshPayload>(refreshToken, env.jwt.refreshSecret);
+    const payload = verifyToken<RefreshPayload>(
+      refreshToken,
+      env.jwt.refreshSecret
+    );
 
     const tokenRecord = await this.refreshRepo.findOne({
       where: {
         token: refreshToken,
-        userId: Number(payload.id),                 // convert to number
+        userId: payload.id, // convert to number
         revoked: false,
         expiresAt: MoreThan(new Date()),
       },
@@ -211,75 +217,90 @@ export class AuthService {
     if (!user) throw new Error("User not found");
 
     await this.revokeRefreshTokens(userId);
+    console.log("1");
+
     await this.userRepo.remove(user);
+    console.log("2");
+
+    return {
+      message: "User deleted successfully",
+    };
   }
 
   // 8. REVOKE ALL TOKENS
   async revokeRefreshTokens(userId: string) {
-    await this.refreshRepo.update({ userId: Number(userId) }, { revoked: true });
+    await this.refreshRepo.update({ userId: userId }, { revoked: true });
+  }
+
+  //  9 forgot password
+  async forgotPassword(dto: { email: string }) {
+    const user = await this.userRepo.findOneBy({ email: dto.email });
+    if (!user) throw new Error("Email not found");
+
+    // Generate a temporary password
+    const tempPassword = randomBytes(8).toString("hex");
+    const hash = await hashPassword(tempPassword);
+
+    await this.userRepo.update({ email: dto.email }, { password: hash });
+
+    // Send new password via email (make sure sendNewPassword accepts the email & password)
+    await sendNewPassword(user.email, tempPassword);
+
+    return "New password sent successfully";
   }
 
   async getAllUsers(params: GetAllUsersParams) {
-  const {
-    page,
-    limit,
-    search,
-    role,
-    isActive,
-    sortBy,
-    sortOrder,
-  } = params;
+    const { page, limit, search, role, isActive, sortBy, sortOrder } = params;
 
-  const skip = (page - 1) * limit;
+    const skip = (page - 1) * limit;
 
-  const query = this.userRepo.createQueryBuilder("user");
+    const query = this.userRepo.createQueryBuilder("user");
 
-  // Search: name OR email
-  if (search?.trim()) {
-    query.andWhere(
-      "(user.name ILIKE :search OR user.email ILIKE :search)",
-      { search: `%${search.trim()}%` }
-    );
+    // Search: name OR email
+    if (search?.trim()) {
+      query.andWhere("(user.name ILIKE :search OR user.email ILIKE :search)", {
+        search: `%${search.trim()}%`,
+      });
+    }
+
+    // Filters
+    if (role) {
+      query.andWhere("user.role = :role", { role });
+    }
+    if (isActive !== undefined) {
+      query.andWhere("user.isActive = :isActive", { isActive });
+    }
+
+    // Sorting
+    const validSortFields = ["name", "email", "role", "createdAt", "updatedAt"];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+    query.orderBy(`user.${sortField}`, sortOrder);
+
+    // Execute with pagination
+    const [users, total] = await query
+      .select([
+        "user.id",
+        "user.email",
+        "user.name",
+        "user.role",
+        "user.isActive",
+        "user.createdAt",
+        "user.updatedAt",
+      ])
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data: users,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1,
+      },
+    };
   }
-
-  // Filters
-  if (role) {
-    query.andWhere("user.role = :role", { role });
-  }
-  if (isActive !== undefined) {
-    query.andWhere("user.isActive = :isActive", { isActive });
-  }
-
-  // Sorting
-  const validSortFields = ["name", "email", "role", "createdAt", "updatedAt"];
-  const sortField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
-  query.orderBy(`user.${sortField}`, sortOrder);
-
-  // Execute with pagination
-  const [users, total] = await query
-    .select([
-      "user.id",
-      "user.email",
-      "user.name",
-      "user.role",
-      "user.isActive",
-      "user.createdAt",
-      "user.updatedAt",
-    ])
-    .skip(skip)
-    .take(limit)
-    .getManyAndCount();
-
-  return {
-    data: users,
-    pagination: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page < Math.ceil(total / limit),
-      hasPrev: page > 1,
-    },
-  };
-}
 }
