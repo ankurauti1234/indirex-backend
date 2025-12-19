@@ -13,4 +13,4 @@ export interface OtaJobResponse {
   updateUrl: string;
   jobDocumentS3: string;
   targets: string[];
-}
+} 

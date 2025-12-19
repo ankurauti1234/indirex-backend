@@ -42,3 +42,7 @@ export const getUsersSchema = Joi.object({
   sortOrder: Joi.string().valid("ASC", "DESC").default("DESC"),
 });
 
+export const createNewPasswordSchema = Joi.object({
+  email: Joi.string().email().required(),
+});
+

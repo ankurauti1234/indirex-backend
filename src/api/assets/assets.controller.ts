@@ -2,12 +2,13 @@ import { Request, Response } from "express";
 import { AssetsService } from "../../services/assets/assets.service";
 import { sendSuccess, sendError } from "../../utils/response";
 import multer from "multer";
+import { IotMeterStatus } from "../../database/entities";
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
-
+ 
 const service = new AssetsService();
 
 export const uploadMeters = [
@@ -28,13 +29,26 @@ export const uploadMeters = [
 
 export const getMeters = async (req: Request, res: Response) => {
   try {
-    const { page, limit } = req.query;
-    const data = await service.getMeters({ page: Number(page), limit: Number(limit) });
+    const { page, limit, meterId, status, powerHATStatus, groupName,meterType } =
+      req.query;
+
+    const data = await service.getMeters({
+      page: Number(page),
+      limit: Number(limit),
+      meterId: meterId as string,
+      status: status as IotMeterStatus,
+      powerHATStatus: powerHATStatus as string,
+      groupName: groupName as string,
+      meterType: meterType as string,
+
+    });
+
     sendSuccess(res, data, "Meters listed");
   } catch (e: any) {
     sendError(res, e.message, 500);
   }
-};
+}; 
+
 
 export const updateMeter = async (req: Request, res: Response) => {
   try {

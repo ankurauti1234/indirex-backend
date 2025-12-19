@@ -26,7 +26,7 @@ export const getEvents = async (req: Request, res: Response) => {
     console.error("getEvents error:", e);
     sendSuccess(res, { events: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }, "Error");
   }
-};
+}; 
 
 export const getEventsByType = async (req: Request, res: Response) => {
   try {

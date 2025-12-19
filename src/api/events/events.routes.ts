@@ -19,7 +19,7 @@ router.use("/mapping", eventMappingRouter);
 
 // === Events ===
 router.get("/", validationMiddleware({ query: eventsQuerySchema }), getEvents);
-
+ 
 router.get(
   "/type/:type",
   validationMiddleware({

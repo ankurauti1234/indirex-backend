@@ -8,4 +8,4 @@ export const reportQuerySchema = Joi.object({
   page: Joi.number().min(1).default(1),
   limit: Joi.number().min(1).max(100).default(10),
   format: Joi.string().valid("json", "csv", "xlsx", "xml").default("json"),
-});
+}); 

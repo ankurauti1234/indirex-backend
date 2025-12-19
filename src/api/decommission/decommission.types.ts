@@ -9,7 +9,7 @@ export interface GetAssignedMetersQuery {
   limit?: number;
   search?: string;
 }
-
+ 
 export interface GetDecommissionLogsQuery {
   page?: number;
   limit?: number;

@@ -10,8 +10,8 @@ interface GetAssignedMetersParams {
   page: number;
   limit: number;
   search?: string;
-}
-
+} 
+ 
 interface DecommissionMeterDto {
   meterId: string;
   reason?: string;

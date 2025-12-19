@@ -8,6 +8,7 @@ import {
   updateUser,
   deleteUser,
   getAllUsers,
+  createNewPassword,
 } from "./auth.controller";
 import { validationMiddleware } from "../../middleware/validation.middleware";
 import { protect } from "../../middleware/auth.middleware";
@@ -20,6 +21,7 @@ import {
   refreshTokenSchema,
   updateUserSchema,
   getUsersSchema,
+  createNewPasswordSchema,
 } from "./auth.validation";
 import Joi from "joi";
 
@@ -61,23 +63,31 @@ router.post(
   createUser
 );
 
+router.post(
+  "/forgot-password",
+  validationMiddleware({ body: createNewPasswordSchema }),
+  createNewPassword
+);
+
 router.patch(
   "/users/:id",
   protect,
   authorize(UserRole.ADMIN),
   validationMiddleware({
-    params: Joi.object({ id: Joi.number().required() }),
+    params: Joi.object({ id: Joi.string().guid({ version: "uuidv4" }).required() }),
     body: updateUserSchema,
   }),
   updateUser
-);
+); 
 
 router.delete(
   "/users/:id",
   protect,
   authorize(UserRole.ADMIN),
   validationMiddleware({
-    params: Joi.object({ id: Joi.number().required() }),
+    params: Joi.object({
+      id: Joi.string().guid({ version: "uuidv4" }).required(),
+    }),
   }),
   deleteUser
 );

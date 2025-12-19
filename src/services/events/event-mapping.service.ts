@@ -10,8 +10,81 @@ import { ConflictError, NotFoundError } from "../../utils/errors";
 export class EventMappingService {
   private repo = AppDataSource.getRepository(EventMapping);
 
-  async getAll(): Promise<EventMapping[]> {
-    return this.repo.find({ order: { type: "ASC" } });
+  async getAll(filters: any = {}): Promise<any> {
+    const queryBuilder = this.repo.createQueryBuilder("em");
+
+    // Updated search: look in both 'type' and 'name'
+    if (filters.search) {
+      const search = filters.search.trim();
+
+      // If search is a number, also match on type
+      const isNumeric = !isNaN(search) && !isNaN(parseInt(search));
+
+      if (isNumeric) {
+        const typeValue = parseInt(search, 10);
+        queryBuilder.andWhere(
+          "(em.type = :typeValue OR em.name ILIKE :search OR em.description ILIKE :search)",
+          { typeValue, search: `%${search}%` }
+        );
+      } else {
+        queryBuilder.andWhere(
+          "(em.name ILIKE :search OR em.description ILIKE :search)",
+          { search: `%${search}%` }
+        );
+      }
+    }
+
+    if (filters.is_alert !== undefined) {
+      queryBuilder.andWhere("em.is_alert = :is_alert", {
+        is_alert: filters.is_alert,
+      });
+    }
+
+    if (filters.enabled !== undefined) {
+      queryBuilder.andWhere("em.enabled = :enabled", {
+        enabled: filters.enabled,
+      });
+    }
+
+    if (filters.severity) {
+      queryBuilder.andWhere("em.severity = :severity", {
+        severity: filters.severity,
+      });
+    }
+
+    queryBuilder.orderBy("em.type", "ASC");
+
+    // Pagination logic
+    const page = parseInt(filters.page) || 1;
+    const limit = parseInt(filters.limit) || 25;
+    const skip = (page - 1) * limit;
+
+    // Return all if no filters/pagination
+    if (
+      !filters.search &&
+      filters.is_alert === undefined &&
+      filters.severity === undefined &&
+      filters.enabled === undefined &&
+      !filters.page &&
+      !filters.limit
+    ) {
+      return queryBuilder.getMany();
+    }
+
+    const [data, total] = await queryBuilder
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async getById(id: number): Promise<EventMapping> {

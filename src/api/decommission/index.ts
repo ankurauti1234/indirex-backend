@@ -4,4 +4,4 @@ import decommissionRouter from "./decommission.routes";
 const router = Router();
 router.use("/", decommissionRouter);
 
-export default router;
+export default router; 

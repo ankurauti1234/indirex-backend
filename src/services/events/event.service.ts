@@ -15,7 +15,7 @@ export class EventService {
     const n = Number(val);
     return isNaN(n) ? undefined : n;
   }
-
+ 
   async getEvents(filters: EventFilters = {}): Promise<PaginatedEvents> {
     const {
       device_id,

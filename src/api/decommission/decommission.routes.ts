@@ -20,7 +20,7 @@ const router = Router();
 // All routes require admin
 router.use(protect, authorize(UserRole.ADMIN, UserRole.DEVELOPER));
 
-router.get(
+router.get(  
   "/assigned",
   validationMiddleware({ query: listAssignedMetersSchema }),
   getAssignedMeters

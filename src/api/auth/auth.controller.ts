@@ -72,14 +72,14 @@ export const updateUser = async (req: Request, res: Response) => {
     sendSuccess(res, updated, "User updated");
   } catch (e: any) {
     sendError(res, e.message, 400);
-  }
+  } 
 };
 
 export const deleteUser = async (req: Request, res: Response) => {
   try {
     const userId = req.params.id; // UUID string
-    await service.deleteUser(userId);
-    sendSuccess(res, null, "User deleted", 204);
+    const result = await service.deleteUser(userId);
+    sendSuccess(res, result, "User deleted", 200);
   } catch (e: any) {
     sendError(res, e.message, 400);
   }
@@ -108,6 +108,16 @@ export const getAllUsers = async (req: Request, res: Response) => {
     });
 
     sendSuccess(res, data, "Users retrieved successfully");
+  } catch (e: any) {
+    sendError(res, e.message, 400);
+  }
+};
+
+export const createNewPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    await service.forgotPassword({ email });
+    sendSuccess(res, null, "Password reset email sent");
   } catch (e: any) {
     sendError(res, e.message, 400);
   }
