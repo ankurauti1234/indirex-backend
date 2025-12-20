@@ -15,3 +15,4 @@ router.get("/assigned", (0, validation_middleware_1.validationMiddleware)({ quer
 router.post("/decommission", (0, validation_middleware_1.validationMiddleware)({ body: decommission_validation_1.decommissionMeterSchema }), decommission_controller_1.decommissionMeter);
 router.get("/logs", (0, validation_middleware_1.validationMiddleware)({ query: decommission_validation_1.getDecommissionLogsSchema }), decommission_controller_1.getDecommissionLogs);
 exports.default = router;
+//# sourceMappingURL=decommission.routes.js.map

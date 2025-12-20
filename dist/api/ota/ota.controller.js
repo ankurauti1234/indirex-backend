@@ -12,7 +12,9 @@ const upload = (0, multer_1.default)({
     dest: "uploads/",
     limits: { fileSize: 100 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-        if (file.mimetype === "application/octet-stream" || file.mimetype.startsWith("application/") || file.mimetype.startsWith("text/")) {
+        if (file.mimetype === "application/octet-stream" ||
+            file.mimetype.startsWith("application/") ||
+            file.mimetype.startsWith("text/")) {
             cb(null, true);
         }
         else {
@@ -50,7 +52,12 @@ const getMyJobs = async (req, res) => {
             throw new Error("Unauthorized");
         const page = parseInt(req.query.page) || 1;
         const limit = Math.min(parseInt(req.query.limit) || 10, 50);
-        const data = await service.getJobsByUser(req.user.id, page, limit);
+        const search = req.query.search
+            ? req.query.search.trim()
+            : undefined;
+        // If search is empty string after trim, treat as no search
+        const searchTerm = search === "" ? undefined : search;
+        const data = await service.getJobsByUser(req.user.id, page, limit, searchTerm);
         (0, response_1.sendSuccess)(res, data, "Your OTA jobs");
     }
     catch (e) {
@@ -58,3 +65,4 @@ const getMyJobs = async (req, res) => {
     }
 };
 exports.getMyJobs = getMyJobs;
+//# sourceMappingURL=ota.controller.js.map

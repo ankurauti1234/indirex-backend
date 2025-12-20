@@ -12,12 +12,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.Event = void 0;
 const typeorm_1 = require("typeorm");
 let Event = class Event {
-    id;
-    device_id;
-    timestamp; // Unix timestamp (10 digits)
-    type; // int
-    details; // JSONB object, varies by type
-    createdAt;
 };
 exports.Event = Event;
 __decorate([
@@ -49,3 +43,4 @@ __decorate([
 exports.Event = Event = __decorate([
     (0, typeorm_1.Entity)({ name: "events" })
 ], Event);
+//# sourceMappingURL=Event.js.map

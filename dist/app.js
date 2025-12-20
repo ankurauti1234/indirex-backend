@@ -48,22 +48,19 @@ const yaml = __importStar(require("yamljs"));
 const http_1 = require("http");
 const ws_1 = require("ws");
 const connection_1 = require("./database/connection");
+const tunnel_1 = require("./database/tunnel");
 const index_1 = __importDefault(require("./api/index"));
 const error_middleware_1 = require("./middleware/error.middleware");
 const remote_access_websocket_1 = require("./api/remote-access/remote-access.websocket");
-// ✅ IMPORT env.ts
 const env_1 = require("./config/env");
 const app = (0, express_1.default)();
 const httpServer = (0, http_1.createServer)(app);
 // ---------- Middleware ----------
 app.use((0, helmet_1.default)());
-// ⭐ Use CORS from env.ts
 const allowedOrigins = env_1.env.cors.origins;
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
-        if (!origin)
-            return callback(null, true); // mobile / curl
-        if (allowedOrigins.includes(origin)) {
+        if (!origin || allowedOrigins.includes(origin)) {
             return callback(null, true);
         }
         return callback(new Error("Not allowed by CORS: " + origin));
@@ -73,7 +70,6 @@ app.use((0, cors_1.default)({
 app.use((0, morgan_1.default)("dev"));
 app.use(express_1.default.json({ limit: "10mb" }));
 app.use(express_1.default.urlencoded({ extended: true }));
-// ⭐ Use cookie secret from env.ts
 app.use((0, cookie_parser_1.default)(env_1.env.cookie.secret));
 // ---------- Swagger ----------
 const swaggerDoc = yaml.load("./src/docs/swagger.yaml");
@@ -90,12 +86,27 @@ const wss = new ws_1.WebSocketServer({
     path: "/ws/remote-access",
 });
 (0, remote_access_websocket_1.setupRemoteAccessWebSocket)(wss);
-// ---------- Export ----------
-const startServer = async () => {
-    await connection_1.AppDataSource.initialize();
-    console.log("Data Source has been initialized!");
-    const port = env_1.env.port;
-    httpServer.listen(port, () => console.log(`Server + WS listening on ${port}`));
-};
-exports.startServer = startServer;
+// ---------- Bootstrap & Start ----------
+async function bootstrap() {
+    try {
+        await (0, tunnel_1.createDbTunnel)();
+        await connection_1.AppDataSource.initialize();
+        console.log("Data Source has been initialized!");
+        const port = env_1.env.port || 3000;
+        httpServer.listen(port, () => {
+            console.log(`Server + WebSocket listening on port ${port}`);
+        });
+    }
+    catch (err) {
+        console.error("Failed to start server:", err);
+        process.exit(1);
+    }
+}
+// Start the server when this module is the main entry point
+if (require.main === module) {
+    bootstrap();
+}
+// Optional: export for testing or external start
+exports.startServer = bootstrap;
 exports.default = app;
+//# sourceMappingURL=app.js.map

@@ -22,21 +22,6 @@ var OtaJobStatus;
     OtaJobStatus["CANCELED"] = "canceled";
 })(OtaJobStatus || (exports.OtaJobStatus = OtaJobStatus = {}));
 let OtaJob = class OtaJob {
-    id;
-    version;
-    fileName;
-    s3KeyUpdate;
-    s3UrlUpdate;
-    s3KeyJobDoc;
-    s3UrlJobDoc;
-    downloadPath;
-    targets;
-    jobId;
-    jobArn;
-    status;
-    userId;
-    user;
-    createdAt;
 };
 exports.OtaJob = OtaJob;
 __decorate([
@@ -103,3 +88,4 @@ __decorate([
 exports.OtaJob = OtaJob = __decorate([
     (0, typeorm_1.Entity)({ name: "ota_jobs" })
 ], OtaJob);
+//# sourceMappingURL=OtaJob.js.map

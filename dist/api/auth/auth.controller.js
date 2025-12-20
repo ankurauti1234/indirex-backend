@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllUsers = exports.deleteUser = exports.updateUser = exports.getMe = exports.refreshToken = exports.createUser = exports.changePassword = exports.login = void 0;
+exports.createNewPassword = exports.getAllUsers = exports.deleteUser = exports.updateUser = exports.getMe = exports.refreshToken = exports.createUser = exports.changePassword = exports.login = void 0;
 const auth_service_1 = require("../../services/auth/auth.service");
 const response_1 = require("../../utils/response");
 const service = new auth_service_1.AuthService();
@@ -85,8 +85,8 @@ exports.updateUser = updateUser;
 const deleteUser = async (req, res) => {
     try {
         const userId = req.params.id; // UUID string
-        await service.deleteUser(userId);
-        (0, response_1.sendSuccess)(res, null, "User deleted", 204);
+        const result = await service.deleteUser(userId);
+        (0, response_1.sendSuccess)(res, result, "User deleted", 200);
     }
     catch (e) {
         (0, response_1.sendError)(res, e.message, 400);
@@ -112,3 +112,15 @@ const getAllUsers = async (req, res) => {
     }
 };
 exports.getAllUsers = getAllUsers;
+const createNewPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        await service.forgotPassword({ email });
+        (0, response_1.sendSuccess)(res, null, "Password reset email sent");
+    }
+    catch (e) {
+        (0, response_1.sendError)(res, e.message, 400);
+    }
+};
+exports.createNewPassword = createNewPassword;
+//# sourceMappingURL=auth.controller.js.map

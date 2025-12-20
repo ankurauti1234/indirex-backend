@@ -22,3 +22,4 @@ router.use("/assets", assets_1.default);
 router.use("/households", household_1.default);
 router.use("/decommission", decommission_1.default);
 exports.default = router;
+//# sourceMappingURL=index.js.map

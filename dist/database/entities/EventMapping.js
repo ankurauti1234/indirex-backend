@@ -13,13 +13,6 @@ exports.EventMapping = void 0;
 // src/database/entities/EventMapping.ts
 const typeorm_1 = require("typeorm");
 let EventMapping = class EventMapping {
-    id;
-    type; // Event type (e.g., 14, 15)
-    name; // Human-readable name
-    description;
-    is_alert; // Critical: marks if it's an alert
-    severity;
-    enabled;
 };
 exports.EventMapping = EventMapping;
 __decorate([
@@ -55,3 +48,4 @@ exports.EventMapping = EventMapping = __decorate([
     (0, typeorm_1.Entity)({ name: "event_mapping" }),
     (0, typeorm_1.Unique)(["type"]) // One mapping per type
 ], EventMapping);
+//# sourceMappingURL=EventMapping.js.map

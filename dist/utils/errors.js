@@ -6,8 +6,6 @@ exports.InternalServerError = exports.ConflictError = exports.NotFoundError = ex
  * Base custom error class
  */
 class AppError extends Error {
-    statusCode;
-    isOperational;
     constructor(message, statusCode) {
         super(message);
         this.statusCode = statusCode;
@@ -60,3 +58,4 @@ class InternalServerError extends AppError {
     }
 }
 exports.InternalServerError = InternalServerError;
+//# sourceMappingURL=errors.js.map

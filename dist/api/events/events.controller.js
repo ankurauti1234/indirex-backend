@@ -63,3 +63,4 @@ const getAlertsByDevice = async (req, res) => {
     }
 };
 exports.getAlertsByDevice = getAlertsByDevice;
+//# sourceMappingURL=events.controller.js.map

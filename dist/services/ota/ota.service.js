@@ -45,13 +45,21 @@ const uuid_1 = require("uuid");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const env_1 = require("../../config/env");
+const typeorm_1 = require("typeorm");
 const s3 = new aws_sdk_1.default.S3({ region: env_1.env.aws.region });
 const iot = new aws_sdk_1.default.Iot({ region: env_1.env.aws.region });
 class OtaService {
-    repo = connection_1.AppDataSource.getRepository(OtaJob_1.OtaJob);
+    constructor() {
+        this.repo = connection_1.AppDataSource.getRepository(OtaJob_1.OtaJob);
+    }
     async uploadToS3(bucket, key, body, contentType) {
         const result = await s3
-            .upload({ Bucket: bucket, Key: key, Body: body, ContentType: contentType })
+            .upload({
+            Bucket: bucket,
+            Key: key,
+            Body: body,
+            ContentType: contentType,
+        })
             .promise();
         return result.Location;
     }
@@ -77,9 +85,9 @@ class OtaService {
         if (thingNames) {
             thingNames
                 .split(",")
-                .map(n => n.trim())
-                .filter(n => n)
-                .forEach(name => {
+                .map((n) => n.trim())
+                .filter((n) => n)
+                .forEach((name) => {
                 targets.push(`arn:aws:iot:${region}:${accountId}:thing/${name}`);
             });
         }
@@ -115,13 +123,19 @@ class OtaService {
         fs.unlinkSync(file.path);
         return otaJob;
     }
-    async getJobsByUser(userId, page = 1, limit = 10) {
-        const [jobs, total] = await this.repo.findAndCount({
+    async getJobsByUser(userId, page = 1, limit = 10, search // ← new optional parameter
+    ) {
+        const queryOptions = {
             where: { userId },
             order: { createdAt: "DESC" },
             take: limit,
             skip: (page - 1) * limit,
-        });
+        };
+        // Add version search (case-insensitive partial match)
+        if (search) {
+            queryOptions.where.version = (0, typeorm_1.ILike)(`%${search}%`);
+        }
+        const [jobs, total] = await this.repo.findAndCount(queryOptions);
         return {
             jobs,
             pagination: {
@@ -134,3 +148,4 @@ class OtaService {
     }
 }
 exports.OtaService = OtaService;
+//# sourceMappingURL=ota.service.js.map

@@ -15,11 +15,6 @@ const typeorm_1 = require("typeorm");
 const Meter_1 = require("./Meter");
 const Household_1 = require("./Household");
 let MeterAssignment = class MeterAssignment {
-    id;
-    meter;
-    household;
-    assignedBy;
-    assignedAt;
 };
 exports.MeterAssignment = MeterAssignment;
 __decorate([
@@ -50,3 +45,4 @@ exports.MeterAssignment = MeterAssignment = __decorate([
     (0, typeorm_1.Entity)({ name: "meter_assignments" }),
     (0, typeorm_1.Unique)(["meter", "household"])
 ], MeterAssignment);
+//# sourceMappingURL=MeterAssignment.js.map

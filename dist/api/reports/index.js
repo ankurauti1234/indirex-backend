@@ -8,3 +8,4 @@ const reports_routes_1 = __importDefault(require("./reports.routes"));
 const router = (0, express_1.Router)();
 router.use("/", reports_routes_1.default);
 exports.default = router;
+//# sourceMappingURL=index.js.map

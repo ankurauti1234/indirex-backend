@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getUsersSchema = exports.updateUserSchema = exports.refreshTokenSchema = exports.createUserSchema = exports.changePasswordSchema = exports.loginSchema = void 0;
+exports.createNewPasswordSchema = exports.getUsersSchema = exports.updateUserSchema = exports.refreshTokenSchema = exports.createUserSchema = exports.changePasswordSchema = exports.loginSchema = void 0;
 const joi_1 = __importDefault(require("joi"));
 const User_1 = require("../../database/entities/User");
 exports.loginSchema = joi_1.default.object({
@@ -41,3 +41,7 @@ exports.getUsersSchema = joi_1.default.object({
     sortBy: joi_1.default.string().valid("name", "email", "role", "createdAt", "updatedAt").default("createdAt"),
     sortOrder: joi_1.default.string().valid("ASC", "DESC").default("DESC"),
 });
+exports.createNewPasswordSchema = joi_1.default.object({
+    email: joi_1.default.string().email().required(),
+});
+//# sourceMappingURL=auth.validation.js.map

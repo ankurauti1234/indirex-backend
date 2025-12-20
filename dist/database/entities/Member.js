@@ -14,12 +14,6 @@ exports.Member = void 0;
 const typeorm_1 = require("typeorm");
 const Household_1 = require("./Household");
 let Member = class Member {
-    id;
-    household;
-    memberCode; // e.g., M1, M2, ...
-    dob;
-    gender;
-    createdAt;
 };
 exports.Member = Member;
 __decorate([
@@ -51,3 +45,4 @@ exports.Member = Member = __decorate([
     (0, typeorm_1.Entity)({ name: "members" }),
     (0, typeorm_1.Index)(["household", "memberCode"], { unique: true })
 ], Member);
+//# sourceMappingURL=Member.js.map

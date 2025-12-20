@@ -23,14 +23,6 @@ var UserRole;
     UserRole["VIEWER"] = "viewer";
 })(UserRole || (exports.UserRole = UserRole = {}));
 let User = class User {
-    id;
-    email;
-    password;
-    name;
-    role;
-    isActive;
-    createdAt;
-    updatedAt;
     async hashPassword() {
         this.password = await bcryptjs_1.default.hash(this.password, 10);
     }
@@ -79,3 +71,4 @@ __decorate([
 exports.User = User = __decorate([
     (0, typeorm_1.Entity)({ name: "users" })
 ], User);
+//# sourceMappingURL=User.js.map

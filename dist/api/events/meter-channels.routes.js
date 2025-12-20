@@ -8,3 +8,4 @@ const meter_channels_validation_1 = require("./meter-channels.validation");
 const router = (0, express_1.Router)();
 router.get("/", (0, validation_middleware_1.validationMiddleware)({ query: meter_channels_validation_1.meterChannelsQuerySchema }), meter_channels_controller_1.getMeterChannels);
 exports.default = router;
+//# sourceMappingURL=meter-channels.routes.js.map

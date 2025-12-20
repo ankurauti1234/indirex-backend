@@ -9,11 +9,14 @@ const DecommissionLog_1 = require("../../database/entities/DecommissionLog");
 const User_1 = require("../../database/entities/User");
 const mqtt_client_1 = require("../mqtt/mqtt.client");
 class DecommissionService {
-    meterRepo = connection_1.AppDataSource.getRepository(Meter_1.Meter);
-    householdRepo = connection_1.AppDataSource.getRepository(Household_1.Household);
-    logRepo = connection_1.AppDataSource.getRepository(DecommissionLog_1.DecommissionLog);
-    userRepo = connection_1.AppDataSource.getRepository(User_1.User);
+    constructor() {
+        this.meterRepo = connection_1.AppDataSource.getRepository(Meter_1.Meter);
+        this.householdRepo = connection_1.AppDataSource.getRepository(Household_1.Household);
+        this.logRepo = connection_1.AppDataSource.getRepository(DecommissionLog_1.DecommissionLog);
+        this.userRepo = connection_1.AppDataSource.getRepository(User_1.User);
+    }
     async getAssignedMeters(params) {
+        // ... (unchanged - keep your existing logic)
         const { page, limit, search } = params;
         const skip = (page - 1) * limit;
         const query = this.meterRepo
@@ -59,21 +62,20 @@ class DecommissionService {
             throw new Error("Meter not found or not currently assigned to a household");
         }
         const household = meter.assignedHousehold;
-        // 1. Send MQTT command
+        // CRITICAL: Wait for device to confirm decommissioning
         try {
-            console.log(`Sending decommission command to meter: ${dto.meterId}`);
-            await (0, mqtt_client_1.publishDecommission)(dto.meterId);
-            console.log(`MQTT command successfully sent for ${dto.meterId}`);
+            console.log(`Sending decommission command and waiting for ACK: ${dto.meterId}`);
+            await (0, mqtt_client_1.publishDecommissionWithAck)(dto.meterId, 30000); // 30s timeout
+            console.log(`Meter ${dto.meterId} successfully confirmed decommissioning`);
         }
-        catch (mqttError) {
-            console.error("CRITICAL: MQTT decommission command FAILED:", mqttError.message);
-            throw new Error(`Failed to send decommission command to device: ${mqttError.message}`);
+        catch (error) {
+            console.error("Decommissioning failed at device level:", error.message);
+            throw new Error(`Device failed or did not respond: ${error.message}`);
         }
-        // 2. Unassign meter
+        // Only now: update database (safe!)
         meter.isAssigned = false;
         meter.assignedHousehold = null;
         await this.meterRepo.save(meter);
-        // 3. Create audit log
         const log = this.logRepo.create({
             meter,
             household,
@@ -81,21 +83,27 @@ class DecommissionService {
             reason: dto.reason || null,
             metadata: {
                 triggeredVia: "API",
-                mqttTopic: `apm/decomission/${dto.meterId}`,
-                userAgent: null, // can be added later
+                ackReceived: true,
+                ackConfirmedAt: new Date().toISOString(),
+                mqttRequestTopic: `apm/decommission/${dto.meterId}`,
+                mqttAckTopic: "apm/decommission",
             },
         });
         const savedLog = await this.logRepo.save(log);
+        // Find user for response
+        const user = await this.userRepo.findOneBy({ id: dto.decommissionedBy });
         return {
             meterId: meter.meterId,
             previousHouseholdHhid: household.hhid,
             decommissionedAt: savedLog.decommissionedAt,
             logId: savedLog.id,
             reason: dto.reason || "No reason provided",
-            status: "decommissioned",
+            decommissionedBy: user ? { name: user.name, email: user.email } : null,
+            status: "decommissioned_and_confirmed_by_device",
         };
     }
     async getDecommissionLogs(params) {
+        // ... keep your existing logic (unchanged)
         const { page, limit, meterId, hhid } = params;
         const skip = (page - 1) * limit;
         const query = this.logRepo
@@ -123,6 +131,7 @@ class DecommissionService {
                     }
                     : null,
                 decommissionedAt: l.decommissionedAt,
+                ackConfirmed: !!l.metadata?.ackReceived,
             })),
             pagination: {
                 total,
@@ -134,3 +143,4 @@ class DecommissionService {
     }
 }
 exports.DecommissionService = DecommissionService;
+//# sourceMappingURL=decommission.service.js.map

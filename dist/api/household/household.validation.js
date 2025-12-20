@@ -3,8 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateContactSchema = exports.listHouseholdsSchema = void 0;
-// src/api/household/household.validation.ts
+exports.uploadMembersSchema = exports.updateContactSchema = exports.listHouseholdsSchema = void 0;
 const joi_1 = __importDefault(require("joi"));
 exports.listHouseholdsSchema = joi_1.default.object({
     search: joi_1.default.string().optional(),
@@ -17,3 +16,7 @@ exports.listHouseholdsSchema = joi_1.default.object({
 exports.updateContactSchema = joi_1.default.object({
     contactEmail: joi_1.default.string().email().required(),
 });
+exports.uploadMembersSchema = joi_1.default.object({
+    householdId: joi_1.default.string().uuid().required(),
+});
+//# sourceMappingURL=household.validation.js.map

@@ -8,3 +8,4 @@ const auth_routes_1 = __importDefault(require("./auth.routes"));
 const router = (0, express_1.Router)();
 router.use("/", auth_routes_1.default);
 exports.default = router;
+//# sourceMappingURL=index.js.map

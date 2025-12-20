@@ -11,6 +11,7 @@ import meterChannelsRouter from "./meter-channels.routes";
 import { validationMiddleware } from "../../middleware/validation.middleware";
 import { eventsQuerySchema } from "./events.validation";
 import Joi from "joi";
+import { EventService } from "../../services/events/event.service"; // ← Static import
 
 const router = Router();
 
@@ -19,7 +20,7 @@ router.use("/mapping", eventMappingRouter);
 
 // === Events ===
 router.get("/", validationMiddleware({ query: eventsQuerySchema }), getEvents);
- 
+
 router.get(
   "/type/:type",
   validationMiddleware({
@@ -42,9 +43,16 @@ router.get(
 
 router.use("/meter-channels", meterChannelsRouter);
 
+// === Debug endpoint (safe version) ===
 router.get("/debug", async (_req, res) => {
-  await new (await import("../../services/events/event.service")).EventService().debugTimestamps();
-  res.send("Check server console");
+  try {
+    const eventService = new EventService();
+    await eventService.debugTimestamps();
+    res.send("Debug timestamps executed — check server console");
+  } catch (err) {
+    console.error("Debug failed:", err);
+    res.status(500).send("Debug failed");
+  }
 });
 
 export default router;

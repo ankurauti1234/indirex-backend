@@ -16,18 +16,6 @@ const Household_1 = require("./Household");
 const MeterOtp_1 = require("./MeterOtp");
 const MeterAssignment_1 = require("./MeterAssignment");
 let Meter = class Meter {
-    id;
-    meterId;
-    meterType;
-    assetSerialNumber;
-    powerHATStatus;
-    isAssigned;
-    assignedHousehold;
-    otps;
-    assignments;
-    createdAt;
-    updatedAt;
-    assignedHouseholdId;
 };
 exports.Meter = Meter;
 __decorate([
@@ -82,3 +70,4 @@ __decorate([
 exports.Meter = Meter = __decorate([
     (0, typeorm_1.Entity)({ name: "meters" })
 ], Meter);
+//# sourceMappingURL=Meter.js.map

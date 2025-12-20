@@ -70,7 +70,7 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node --trace-warnings dist/server.js",
     "migrate:run": "dotenv -e .env -- ts-node ./node_modules/typeorm/cli.js migration:run -d src/database/connection.ts",
     "migrate:gen": "dotenv -e .env -- ts-node ./node_modules/typeorm/cli.js migration:generate src/database/migrations/Init -d src/database/connection.ts",
     "seed:admin": "dotenv -e .env -- ts-node src/database/seeds/admin.ts",

@@ -6,7 +6,9 @@ const Event_1 = require("../../database/entities/Event");
 const event_mapping_service_1 = require("./event-mapping.service");
 const mappingService = new event_mapping_service_1.EventMappingService();
 class EventService {
-    repo = connection_1.AppDataSource.getRepository(Event_1.Event);
+    constructor() {
+        this.repo = connection_1.AppDataSource.getRepository(Event_1.Event);
+    }
     toNum(val) {
         if (val === undefined || val === null || val === "")
             return undefined;
@@ -91,3 +93,4 @@ class EventService {
     }
 }
 exports.EventService = EventService;
+//# sourceMappingURL=event.service.js.map

@@ -12,18 +12,20 @@ const email_1 = require("../../utils/email");
 const crypto_1 = require("crypto");
 const typeorm_1 = require("typeorm");
 class AuthService {
-    userRepo = connection_1.AppDataSource.getRepository(User_1.User);
-    refreshRepo = connection_1.AppDataSource.getRepository(RefreshToken_1.RefreshToken);
+    constructor() {
+        this.userRepo = connection_1.AppDataSource.getRepository(User_1.User);
+        this.refreshRepo = connection_1.AppDataSource.getRepository(RefreshToken_1.RefreshToken);
+    }
     // 1. ADMIN: Create user + send temp password
     async createUserByAdmin(dto) {
         const exists = await this.userRepo.findOneBy({ email: dto.email });
         if (exists)
             throw new Error("Email already in use");
         const tempPassword = (0, crypto_1.randomBytes)(8).toString("hex");
-        const hash = await (0, encryption_1.hashPassword)(tempPassword);
+        const hashedPassword = await (0, encryption_1.hashPassword)(tempPassword);
         const user = this.userRepo.create({
             email: dto.email,
-            password: hash,
+            password: hashedPassword, // ✅ FIXED
             name: dto.name,
             role: dto.role ?? User_1.UserRole.VIEWER,
             isActive: false,
@@ -48,10 +50,9 @@ class AuthService {
         const refreshPayload = { id: user.id };
         const refreshToken = (0, jwt_1.generateRefreshToken)(refreshPayload);
         // Save refresh token
-        // cast to any to satisfy entity partial typing (entity may have different declared types)
         const tokenRecord = this.refreshRepo.create({
             token: refreshToken,
-            userId: user.id, // string (UUID)
+            userId: user.id, // ✅ string UUID
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
             revoked: false,
         });
@@ -97,7 +98,7 @@ class AuthService {
         const tokenRecord = await this.refreshRepo.findOne({
             where: {
                 token: refreshToken,
-                userId: Number(payload.id), // convert to number
+                user: { id: payload.id }, // ✅ Use relation instead of userId
                 revoked: false,
                 expiresAt: (0, typeorm_1.MoreThan)(new Date()),
             },
@@ -109,7 +110,9 @@ class AuthService {
             id: tokenRecord.user.id,
             role: tokenRecord.user.role,
         });
-        const newRefreshToken = (0, jwt_1.generateRefreshToken)({ id: tokenRecord.user.id });
+        const newRefreshToken = (0, jwt_1.generateRefreshToken)({
+            id: tokenRecord.user.id,
+        });
         await this.refreshRepo.update(tokenRecord.id, {
             token: newRefreshToken,
             expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -174,31 +177,40 @@ class AuthService {
             throw new Error("User not found");
         await this.revokeRefreshTokens(userId);
         await this.userRepo.remove(user);
+        return { message: "User deleted successfully" };
     }
     // 8. REVOKE ALL TOKENS
     async revokeRefreshTokens(userId) {
-        await this.refreshRepo.update({ userId: Number(userId) }, { revoked: true });
+        await this.refreshRepo.update({ user: { id: userId } }, { revoked: true });
     }
+    // 9. FORGOT PASSWORD
+    async forgotPassword(dto) {
+        const user = await this.userRepo.findOneBy({ email: dto.email });
+        if (!user)
+            throw new Error("Email not found");
+        const tempPassword = (0, crypto_1.randomBytes)(8).toString("hex");
+        const hashedPassword = await (0, encryption_1.hashPassword)(tempPassword);
+        await this.userRepo.update({ email: dto.email }, { password: hashedPassword });
+        await (0, email_1.sendNewPassword)(user.email, tempPassword);
+        return "New password sent successfully";
+    }
+    // 10. GET ALL USERS (PAGINATED)
     async getAllUsers(params) {
-        const { page, limit, search, role, isActive, sortBy, sortOrder, } = params;
+        const { page, limit, search, role, isActive, sortBy, sortOrder } = params;
         const skip = (page - 1) * limit;
         const query = this.userRepo.createQueryBuilder("user");
-        // Search: name OR email
         if (search?.trim()) {
             query.andWhere("(user.name ILIKE :search OR user.email ILIKE :search)", { search: `%${search.trim()}%` });
         }
-        // Filters
-        if (role) {
+        if (role)
             query.andWhere("user.role = :role", { role });
-        }
-        if (isActive !== undefined) {
+        if (isActive !== undefined)
             query.andWhere("user.isActive = :isActive", { isActive });
-        }
-        // Sorting
         const validSortFields = ["name", "email", "role", "createdAt", "updatedAt"];
-        const sortField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+        const sortField = validSortFields.includes(sortBy)
+            ? sortBy
+            : "createdAt";
         query.orderBy(`user.${sortField}`, sortOrder);
-        // Execute with pagination
         const [users, total] = await query
             .select([
             "user.id",
@@ -226,3 +238,4 @@ class AuthService {
     }
 }
 exports.AuthService = AuthService;
+//# sourceMappingURL=auth.service.js.map

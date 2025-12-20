@@ -6,3 +6,4 @@ const app_1 = require("./app");
     console.error("Failed to start server:", err);
     process.exit(1);
 });
+//# sourceMappingURL=server.js.map

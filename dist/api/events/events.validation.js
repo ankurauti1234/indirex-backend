@@ -18,3 +18,4 @@ exports.eventsQuerySchema = joi_1.default.object({
 exports.eventTypeQuerySchema = exports.eventsQuerySchema.keys({
     type: joi_1.default.number().required(), // For /type/:type
 });
+//# sourceMappingURL=events.validation.js.map

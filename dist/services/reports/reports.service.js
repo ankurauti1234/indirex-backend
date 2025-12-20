@@ -34,13 +34,16 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReportsService = void 0;
+// src/services/reports/reports.service.ts
 const connection_1 = require("../../database/connection");
 const Event_1 = require("../../database/entities/Event");
 const csvWriter = __importStar(require("fast-csv"));
 const XLSX = __importStar(require("xlsx"));
 const fast_xml_parser_1 = require("fast-xml-parser");
 class ReportsService {
-    repo = connection_1.AppDataSource.getRepository(Event_1.Event);
+    constructor() {
+        this.repo = connection_1.AppDataSource.getRepository(Event_1.Event);
+    }
     toNum(val) {
         if (val === undefined || val === null || val === "")
             return undefined;
@@ -48,20 +51,18 @@ class ReportsService {
         return isNaN(n) ? undefined : n;
     }
     async getReport(filters = {}, format = "json") {
-        const { type, start_time, end_time, page = 1, limit = 10 } = filters;
-        const take = Math.min(limit, 100);
-        const skip = (page - 1) * take;
+        const { type, start_time, end_time, page = 1, limit = 25 } = filters;
         const qb = this.repo.createQueryBuilder("event");
-        // Filter by event type(s)
+        // === Apply filters (same for all formats) ===
         if (type !== undefined) {
             let types = [];
             if (Array.isArray(type)) {
-                types = type.map(t => this.toNum(t)).filter((t) => t !== undefined);
+                types = type.map((t) => this.toNum(t)).filter((t) => t !== undefined);
             }
             else if (typeof type === "string") {
                 types = type
                     .split(",")
-                    .map(s => this.toNum(s.trim()))
+                    .map((s) => this.toNum(s.trim()))
                     .filter((t) => t !== undefined);
             }
             else {
@@ -73,7 +74,6 @@ class ReportsService {
                 qb.andWhere("event.type IN (:...types)", { types });
             }
         }
-        // Filter by timestamp range
         const start = this.toNum(start_time);
         const end = this.toNum(end_time);
         if (start !== undefined && end !== undefined) {
@@ -85,10 +85,13 @@ class ReportsService {
         else if (end !== undefined) {
             qb.andWhere("event.timestamp <= :end", { end });
         }
-        qb.orderBy("event.timestamp", "DESC").take(take).skip(skip);
-        const [events, total] = await qb.getManyAndCount();
-        // JSON output (paginated)
+        qb.orderBy("event.timestamp", "DESC");
+        // === JSON: Use pagination ===
         if (format === "json") {
+            const take = Math.min(limit || 25, 100);
+            const skip = (page - 1) * take;
+            qb.take(take).skip(skip);
+            const [events, total] = await qb.getManyAndCount();
             return {
                 events,
                 pagination: {
@@ -99,7 +102,7 @@ class ReportsService {
                 },
             };
         }
-        // For export formats, get all data (no pagination)
+        // === CSV / XLSX / XML: Get ALL events (no pagination) ===
         const allEvents = await qb.getMany();
         return await this.exportEvents(allEvents, format);
     }
@@ -134,33 +137,33 @@ class ReportsService {
         });
     }
     toXLSX(events) {
-        const ws = XLSX.utils.json_to_sheet(events.map((e) => ({
+        const data = events.map((e) => ({
             id: e.id,
             meterId: e.device_id,
             timestamp: new Date(e.timestamp * 1000).toISOString(),
             type: e.type,
             details: JSON.stringify(e.details),
-        })));
+        }));
+        const ws = XLSX.utils.json_to_sheet(data);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Events");
         return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
     }
     toXML(events) {
-        const builder = new fast_xml_parser_1.XMLBuilder({
-            format: true,
-        });
+        const builder = new fast_xml_parser_1.XMLBuilder({ format: true });
         const root = {
-            events: events.map((e) => ({
-                event: {
+            events: {
+                event: events.map((e) => ({
                     id: e.id,
                     meterId: e.device_id,
                     timestamp: new Date(e.timestamp * 1000).toISOString(),
                     type: e.type,
-                    details: e.details,
-                },
-            })),
+                    details: JSON.stringify(e.details),
+                })),
+            },
         };
         return builder.build(root);
     }
 }
 exports.ReportsService = ReportsService;
+//# sourceMappingURL=reports.service.js.map

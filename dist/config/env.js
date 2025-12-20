@@ -34,6 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.env = void 0;
+// src/config/env.ts
 const dotenv = __importStar(require("dotenv"));
 dotenv.config();
 const isDev = process.env.NODE_ENV === "development";
@@ -49,6 +50,15 @@ exports.env = {
         user: process.env.POSTGRES_USER,
         password: process.env.POSTGRES_PASSWORD,
         database: process.env.POSTGRES_DB,
+    },
+    // New: SSH Tunnel Config
+    ssh: {
+        enabled: process.env.USE_SSH_TUNNEL === "false",
+        host: process.env.SSH_HOST,
+        port: Number(process.env.SSH_PORT) || 22,
+        user: process.env.SSH_USER,
+        keyPath: process.env.SSH_KEY_PATH,
+        localPort: Number(process.env.LOCAL_TUNNEL_PORT) || 5433,
     },
     jwt: {
         secret: process.env.JWT_SECRET,
@@ -88,3 +98,4 @@ exports.env = {
         })(),
     },
 };
+//# sourceMappingURL=env.js.map

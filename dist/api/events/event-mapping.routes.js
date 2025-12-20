@@ -10,7 +10,7 @@ const validation_middleware_1 = require("../../middleware/validation.middleware"
 const event_mapping_validation_1 = require("./event-mapping.validation");
 const joi_1 = __importDefault(require("joi"));
 const router = (0, express_1.Router)();
-router.get("/", event_mapping_controller_1.getEventMappings);
+router.get("/", (0, validation_middleware_1.validationMiddleware)({ query: event_mapping_validation_1.eventMappingFilterSchema }), event_mapping_controller_1.getEventMappings);
 router.get("/:id", (0, validation_middleware_1.validationMiddleware)({
     params: joi_1.default.object({ id: joi_1.default.number().integer().required() }),
 }), event_mapping_controller_1.getEventMapping);
@@ -23,3 +23,4 @@ router.delete("/:id", (0, validation_middleware_1.validationMiddleware)({
     params: joi_1.default.object({ id: joi_1.default.number().integer().required() }),
 }), event_mapping_controller_1.deleteEventMapping);
 exports.default = router;
+//# sourceMappingURL=event-mapping.routes.js.map

@@ -17,14 +17,6 @@ const Meter_1 = require("./Meter");
 const PreregisteredContact_1 = require("./PreregisteredContact");
 const MeterAssignment_1 = require("./MeterAssignment");
 let Household = class Household {
-    id;
-    hhid;
-    createdAt;
-    // Relations
-    members;
-    meters;
-    assignments;
-    contacts;
 };
 exports.Household = Household;
 __decorate([
@@ -58,3 +50,4 @@ __decorate([
 exports.Household = Household = __decorate([
     (0, typeorm_1.Entity)({ name: "households" })
 ], Household);
+//# sourceMappingURL=Household.js.map

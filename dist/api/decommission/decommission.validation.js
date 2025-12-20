@@ -24,3 +24,4 @@ exports.getDecommissionLogsSchema = joi_1.default.object({
     meterId: joi_1.default.string().optional(),
     hhid: joi_1.default.string().optional(),
 });
+//# sourceMappingURL=decommission.validation.js.map

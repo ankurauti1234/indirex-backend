@@ -18,12 +18,6 @@ var IotMeterStatus;
     IotMeterStatus["UNREGISTERED"] = "unregistered";
 })(IotMeterStatus || (exports.IotMeterStatus = IotMeterStatus = {}));
 let IotMeter = class IotMeter {
-    meterId;
-    groupName;
-    status;
-    lastSeen;
-    createdAt;
-    updatedAt;
 };
 exports.IotMeter = IotMeter;
 __decorate([
@@ -55,3 +49,4 @@ exports.IotMeter = IotMeter = __decorate([
     (0, typeorm_1.Index)(["groupName"]),
     (0, typeorm_1.Index)(["status"])
 ], IotMeter);
+//# sourceMappingURL=IotMeter.js.map

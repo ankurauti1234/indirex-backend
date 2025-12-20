@@ -11,3 +11,4 @@ const sendError = (res, msg = "Internal Server Error", status = 500, error) => {
     return res.status(status).json(payload);
 };
 exports.sendError = sendError;
+//# sourceMappingURL=response.js.map

@@ -16,14 +16,6 @@ const Meter_1 = require("./Meter");
 const Household_1 = require("./Household");
 const User_1 = require("./User");
 let DecommissionLog = class DecommissionLog {
-    id;
-    meter;
-    household;
-    decommissionedBy;
-    decommissionedByUserId;
-    reason;
-    metadata;
-    decommissionedAt;
 };
 exports.DecommissionLog = DecommissionLog;
 __decorate([
@@ -65,3 +57,4 @@ exports.DecommissionLog = DecommissionLog = __decorate([
     (0, typeorm_1.Entity)({ name: "decommission_logs" }),
     (0, typeorm_1.Index)(["meter", "household"])
 ], DecommissionLog);
+//# sourceMappingURL=DecommissionLog.js.map

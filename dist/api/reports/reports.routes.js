@@ -12,3 +12,4 @@ const router = (0, express_1.Router)();
 router.use(auth_middleware_1.protect, (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER));
 router.get("/", (0, validation_middleware_1.validationMiddleware)({ query: reports_validation_1.reportQuerySchema }), reports_controller_1.getReport);
 exports.default = router;
+//# sourceMappingURL=reports.routes.js.map

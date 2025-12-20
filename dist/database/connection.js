@@ -34,22 +34,27 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppDataSource = void 0;
+// src/database/connection.ts
 require("reflect-metadata");
 const typeorm_1 = require("typeorm");
 const entities = __importStar(require("./entities"));
 const env_1 = require("../config/env");
+const tunnel_1 = require("./tunnel");
+const dbHost = env_1.env.ssh.enabled ? (0, tunnel_1.getLocalDbHost)() : env_1.env.postgres.host;
+const dbPort = env_1.env.ssh.enabled ? (0, tunnel_1.getLocalDbPort)() : env_1.env.postgres.port;
 exports.AppDataSource = new typeorm_1.DataSource({
     type: "postgres",
-    host: env_1.env.postgres.host,
-    port: env_1.env.postgres.port,
+    host: dbHost,
+    port: dbPort,
     username: env_1.env.postgres.user,
     password: env_1.env.postgres.password,
     database: env_1.env.postgres.database,
     ssl: {
         rejectUnauthorized: false,
     },
-    synchronize: false, // keep as you want
+    synchronize: false,
     logging: env_1.env.nodeEnv === "development",
     entities: Object.values(entities),
     migrations: ["src/database/migrations/**/*.ts"],
 });
+//# sourceMappingURL=connection.js.map

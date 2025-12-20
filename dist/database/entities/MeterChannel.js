@@ -13,14 +13,6 @@ exports.MeterChannel = void 0;
 // src/database/entities/MeterChannel.ts
 const typeorm_1 = require("typeorm");
 let MeterChannel = class MeterChannel {
-    id;
-    device_id;
-    timestamp;
-    status;
-    label;
-    confidence;
-    // Optional: automatically track when record was inserted
-    created_at;
 };
 exports.MeterChannel = MeterChannel;
 __decorate([
@@ -55,3 +47,4 @@ exports.MeterChannel = MeterChannel = __decorate([
     (0, typeorm_1.Entity)({ name: "meter_channels" }),
     (0, typeorm_1.Index)("idx_meter_channels_device_timestamp", ["device_id", "timestamp"]) // Recommended for querying
 ], MeterChannel);
+//# sourceMappingURL=MeterChannel.js.map

@@ -8,3 +8,4 @@ const events_routes_1 = __importDefault(require("./events.routes"));
 const router = (0, express_1.Router)();
 router.use("/", events_routes_1.default);
 exports.default = router;
+//# sourceMappingURL=index.js.map

@@ -1,5 +1,5 @@
 // src/app.ts
-import express, { Request, Response } from "express";
+import express from "express";
 import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
@@ -10,7 +10,7 @@ import { createServer } from "http";
 import { WebSocketServer } from "ws";
 
 import { AppDataSource } from "./database/connection";
-import { createDbTunnel } from "./database/tunnel";  // ← Import tunnel
+import { createDbTunnel } from "./database/tunnel";
 import apiRouter from "./api/index";
 import { errorMiddleware } from "./middleware/error.middleware";
 import { setupRemoteAccessWebSocket } from "./api/remote-access/remote-access.websocket";
@@ -28,8 +28,7 @@ const allowedOrigins = env.cors.origins;
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
       return callback(new Error("Not allowed by CORS: " + origin));
@@ -63,24 +62,28 @@ const wss = new WebSocketServer({
 });
 setupRemoteAccessWebSocket(wss);
 
-// ---------- Start Server ----------
-export const startServer = async () => {
+// ---------- Bootstrap & Start ----------
+async function bootstrap() {
   try {
-    // Step 1: Create SSH tunnel if enabled
     await createDbTunnel();
-
-    // Step 2: Initialize TypeORM (now connects via tunnel or directly)
     await AppDataSource.initialize();
     console.log("Data Source has been initialized!");
 
-    const port = env.port;
-    httpServer.listen(port, () =>
-      console.log(`Server + WS listening on port ${port}`)
-    );
+    const port = env.port || 3000;
+    httpServer.listen(port, () => {
+      console.log(`Server + WebSocket listening on port ${port}`);
+    });
   } catch (err) {
     console.error("Failed to start server:", err);
     process.exit(1);
   }
-};
+}
 
+// Start the server when this module is the main entry point
+if (require.main === module) {
+  bootstrap();
+}
+
+// Optional: export for testing or external start
+export const startServer = bootstrap;
 export default app;

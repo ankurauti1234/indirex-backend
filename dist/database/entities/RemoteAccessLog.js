@@ -14,15 +14,6 @@ exports.RemoteAccessLog = void 0;
 const typeorm_1 = require("typeorm");
 const User_1 = require("./User");
 let RemoteAccessLog = class RemoteAccessLog {
-    id;
-    userId;
-    user;
-    meterId;
-    port;
-    clientIp;
-    userAgent;
-    disconnectedAt;
-    connectedAt;
 };
 exports.RemoteAccessLog = RemoteAccessLog;
 __decorate([
@@ -64,3 +55,4 @@ __decorate([
 exports.RemoteAccessLog = RemoteAccessLog = __decorate([
     (0, typeorm_1.Entity)({ name: "remote_access_logs" })
 ], RemoteAccessLog);
+//# sourceMappingURL=RemoteAccessLog.js.map

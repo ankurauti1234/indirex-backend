@@ -4,7 +4,9 @@ exports.MeterChannelService = void 0;
 const connection_1 = require("../../database/connection");
 const MeterChannel_1 = require("../../database/entities/MeterChannel");
 class MeterChannelService {
-    repo = connection_1.AppDataSource.getRepository(MeterChannel_1.MeterChannel);
+    constructor() {
+        this.repo = connection_1.AppDataSource.getRepository(MeterChannel_1.MeterChannel);
+    }
     toNum(val) {
         if (val === undefined || val === null || val === "")
             return undefined;
@@ -50,3 +52,4 @@ class MeterChannelService {
     }
 }
 exports.MeterChannelService = MeterChannelService;
+//# sourceMappingURL=meter-channel.service.js.map

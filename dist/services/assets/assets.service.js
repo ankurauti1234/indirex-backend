@@ -50,8 +50,10 @@ const iot = new aws_sdk_1.default.Iot({ region: env_1.env.aws.region || "ap-sout
 // IoT groups configured in your AWS account
 const IOT_GROUPS = ["armenia_meter"];
 class AssetsService {
-    meterRepo = connection_1.AppDataSource.getRepository(Meter_1.Meter);
-    iotMeterRepo = connection_1.AppDataSource.getRepository(IotMeter_1.IotMeter);
+    constructor() {
+        this.meterRepo = connection_1.AppDataSource.getRepository(Meter_1.Meter);
+        this.iotMeterRepo = connection_1.AppDataSource.getRepository(IotMeter_1.IotMeter);
+    }
     // ==============================================================
     // 1️⃣ UPLOAD METERS (CSV / XLSX)
     // ==============================================================
@@ -167,11 +169,39 @@ class AssetsService {
         const page = Math.max(Number(filters.page) || 1, 1);
         const limit = Math.min(Number(filters.limit) || 10, 100);
         const skip = (page - 1) * limit;
-        const [meters, total] = await this.meterRepo.findAndCount({
-            order: { createdAt: "DESC" },
-            take: limit,
-            skip,
-        });
+        const qb = this.meterRepo.createQueryBuilder("meter");
+        // 🔹 meterId filter
+        if (filters.meterId) {
+            qb.andWhere("meter.meterId ILIKE :meterId", {
+                meterId: `%${filters.meterId}%`,
+            });
+        }
+        // 🔹 power HAT filter
+        if (filters.powerHATStatus) {
+            qb.andWhere("meter.powerHATStatus = :powerHATStatus", {
+                powerHATStatus: filters.powerHATStatus,
+            });
+        }
+        // 🔹 meterType filter
+        if (filters.meterType) {
+            qb.andWhere("meter.meterType = :meterType", {
+                meterType: filters.meterType,
+            });
+        }
+        // 🔹 join iot_meters only if needed
+        if (filters.status || filters.groupName) {
+            qb.leftJoin(IotMeter_1.IotMeter, "iot", "iot.meterId = meter.meterId");
+            if (filters.status) {
+                qb.andWhere("iot.status = :status", { status: filters.status });
+            }
+            if (filters.groupName) {
+                qb.andWhere("iot.groupName = :groupName", {
+                    groupName: filters.groupName,
+                });
+            }
+        }
+        qb.orderBy("meter.createdAt", "DESC").skip(skip).take(limit);
+        const [meters, total] = await qb.getManyAndCount();
         const iotMeters = await this.iotMeterRepo.find({
             where: { meterId: (0, typeorm_1.In)(meters.map((m) => m.meterId)) },
         });
@@ -323,3 +353,4 @@ class AssetsService {
     }
 }
 exports.AssetsService = AssetsService;
+//# sourceMappingURL=assets.service.js.map

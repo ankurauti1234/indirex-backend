@@ -30,3 +30,4 @@ const validationMiddleware = (schema) => {
     };
 };
 exports.validationMiddleware = validationMiddleware;
+//# sourceMappingURL=validation.middleware.js.map

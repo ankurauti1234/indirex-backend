@@ -38,3 +38,4 @@ const protect = async (req, res, next) => {
     }
 };
 exports.protect = protect;
+//# sourceMappingURL=auth.middleware.js.map

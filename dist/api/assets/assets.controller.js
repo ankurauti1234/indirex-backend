@@ -31,8 +31,16 @@ exports.uploadMeters = [
 ];
 const getMeters = async (req, res) => {
     try {
-        const { page, limit } = req.query;
-        const data = await service.getMeters({ page: Number(page), limit: Number(limit) });
+        const { page, limit, meterId, status, powerHATStatus, groupName, meterType } = req.query;
+        const data = await service.getMeters({
+            page: Number(page),
+            limit: Number(limit),
+            meterId: meterId,
+            status: status,
+            powerHATStatus: powerHATStatus,
+            groupName: groupName,
+            meterType: meterType,
+        });
         (0, response_1.sendSuccess)(res, data, "Meters listed");
     }
     catch (e) {
@@ -97,3 +105,4 @@ const getUnregisteredInGroup = async (req, res) => {
     }
 };
 exports.getUnregisteredInGroup = getUnregisteredInGroup;
+//# sourceMappingURL=assets.controller.js.map

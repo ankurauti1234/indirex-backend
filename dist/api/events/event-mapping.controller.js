@@ -4,8 +4,9 @@ exports.deleteEventMapping = exports.updateEventMapping = exports.createEventMap
 const response_1 = require("../../utils/response");
 const event_mapping_service_1 = require("../../services/events/event-mapping.service");
 const service = new event_mapping_service_1.EventMappingService();
-const getEventMappings = async (_req, res) => {
-    const mappings = await service.getAll();
+const getEventMappings = async (req, res) => {
+    const filters = req.query; // Already validated and cleaned by middleware
+    const mappings = await service.getAll(filters);
     (0, response_1.sendSuccess)(res, mappings, "Event mappings retrieved");
 };
 exports.getEventMappings = getEventMappings;
@@ -34,3 +35,4 @@ const deleteEventMapping = async (req, res) => {
     (0, response_1.sendSuccess)(res, null, "Event mapping deleted", 204);
 };
 exports.deleteEventMapping = deleteEventMapping;
+//# sourceMappingURL=event-mapping.controller.js.map

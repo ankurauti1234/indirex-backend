@@ -14,13 +14,6 @@ exports.RefreshToken = void 0;
 const typeorm_1 = require("typeorm");
 const User_1 = require("./User");
 let RefreshToken = class RefreshToken {
-    id;
-    token;
-    userId;
-    user;
-    expiresAt;
-    revoked;
-    createdAt;
 };
 exports.RefreshToken = RefreshToken;
 __decorate([
@@ -34,7 +27,7 @@ __decorate([
 ], RefreshToken.prototype, "token", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: "uuid" }),
-    __metadata("design:type", Number)
+    __metadata("design:type", String)
 ], RefreshToken.prototype, "userId", void 0);
 __decorate([
     (0, typeorm_1.ManyToOne)(() => User_1.User, { onDelete: "CASCADE" }),
@@ -55,3 +48,4 @@ __decorate([
 exports.RefreshToken = RefreshToken = __decorate([
     (0, typeorm_1.Entity)({ name: "refresh_tokens" })
 ], RefreshToken);
+//# sourceMappingURL=RefreshToken.js.map

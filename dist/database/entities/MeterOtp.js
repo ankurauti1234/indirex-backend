@@ -14,12 +14,6 @@ exports.MeterOtp = void 0;
 const typeorm_1 = require("typeorm");
 const Meter_1 = require("./Meter");
 let MeterOtp = class MeterOtp {
-    id;
-    meter;
-    otpCode;
-    expiresAt;
-    consumed;
-    createdAt;
 };
 exports.MeterOtp = MeterOtp;
 __decorate([
@@ -51,3 +45,4 @@ __decorate([
 exports.MeterOtp = MeterOtp = __decorate([
     (0, typeorm_1.Entity)({ name: "meter_otps" })
 ], MeterOtp);
+//# sourceMappingURL=MeterOtp.js.map

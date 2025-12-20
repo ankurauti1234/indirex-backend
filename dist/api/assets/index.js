@@ -7,3 +7,4 @@ exports.default = void 0;
 // src/api/assets/index.ts   ←  KEEP THIS FILE
 var assets_routes_1 = require("./assets.routes");
 Object.defineProperty(exports, "default", { enumerable: true, get: function () { return __importDefault(assets_routes_1).default; } });
+//# sourceMappingURL=index.js.map

@@ -28,7 +28,7 @@ const decommissionMeter = async (req, res) => {
             ...dto,
             decommissionedBy: req.user.id,
         });
-        (0, response_1.sendSuccess)(res, result, "Meter decommissioned successfully", 200);
+        (0, response_1.sendSuccess)(res, result, "Meter decommissioned and confirmed by device", 200);
     }
     catch (e) {
         (0, response_1.sendError)(res, e.message, 400);
@@ -51,3 +51,4 @@ const getDecommissionLogs = async (req, res) => {
     }
 };
 exports.getDecommissionLogs = getDecommissionLogs;
+//# sourceMappingURL=decommission.controller.js.map

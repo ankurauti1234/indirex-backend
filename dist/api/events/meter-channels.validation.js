@@ -13,3 +13,4 @@ exports.meterChannelsQuerySchema = joi_1.default.object({
     page: joi_1.default.number().min(1).default(1),
     limit: joi_1.default.number().min(1).max(100).default(10),
 });
+//# sourceMappingURL=meter-channels.validation.js.map

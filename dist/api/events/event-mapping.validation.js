@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateEventMappingSchema = exports.createEventMappingSchema = void 0;
+exports.eventMappingFilterSchema = exports.updateEventMappingSchema = exports.createEventMappingSchema = void 0;
 // src/api/events/event-mapping.validation.ts
 const joi_1 = __importDefault(require("joi"));
 exports.createEventMappingSchema = joi_1.default.object({
@@ -15,3 +15,12 @@ exports.createEventMappingSchema = joi_1.default.object({
     enabled: joi_1.default.boolean().default(true),
 });
 exports.updateEventMappingSchema = exports.createEventMappingSchema.fork(["type", "name"], (schema) => schema.optional());
+exports.eventMappingFilterSchema = joi_1.default.object({
+    search: joi_1.default.string().optional(),
+    is_alert: joi_1.default.boolean().optional(),
+    severity: joi_1.default.string().valid("low", "medium", "high", "critical").optional(),
+    enabled: joi_1.default.boolean().optional(),
+    page: joi_1.default.number().default(1),
+    limit: joi_1.default.number().default(25),
+});
+//# sourceMappingURL=event-mapping.validation.js.map

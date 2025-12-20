@@ -12,6 +12,11 @@ exports.uploadSchema = joi_1.default.object({
 exports.listMetersSchema = joi_1.default.object({
     page: joi_1.default.number().integer().min(1).default(1),
     limit: joi_1.default.number().integer().min(1).max(100).default(10),
+    meterId: joi_1.default.string().optional(),
+    status: joi_1.default.string().optional(),
+    powerHATStatus: joi_1.default.string().optional(),
+    groupName: joi_1.default.string().optional(),
+    meterType: joi_1.default.string().optional(),
 });
 exports.updateMeterSchema = joi_1.default.object({
     meterType: joi_1.default.string().optional(),
@@ -26,3 +31,4 @@ exports.groupThingsSchema = joi_1.default.object({
     page: joi_1.default.number().integer().min(1).default(1),
     limit: joi_1.default.number().integer().min(1).max(100).default(10),
 });
+//# sourceMappingURL=assets.validation.js.map

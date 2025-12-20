@@ -14,3 +14,4 @@ exports.reportQuerySchema = joi_1.default.object({
     limit: joi_1.default.number().min(1).max(100).default(10),
     format: joi_1.default.string().valid("json", "csv", "xlsx", "xml").default("json"),
 });
+//# sourceMappingURL=reports.validation.js.map

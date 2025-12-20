@@ -10,3 +10,4 @@ const errorMiddleware = (err, _req, res, _next) => {
     (0, response_1.sendError)(res, message, status, env_1.env.nodeEnv === "development" ? err.stack : undefined);
 };
 exports.errorMiddleware = errorMiddleware;
+//# sourceMappingURL=error.middleware.js.map

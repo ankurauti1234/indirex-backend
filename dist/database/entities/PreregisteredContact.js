@@ -14,11 +14,6 @@ exports.PreregisteredContact = void 0;
 const typeorm_1 = require("typeorm");
 const Household_1 = require("./Household");
 let PreregisteredContact = class PreregisteredContact {
-    id;
-    household;
-    contactEmail;
-    isActive;
-    createdAt;
 };
 exports.PreregisteredContact = PreregisteredContact;
 __decorate([
@@ -46,3 +41,4 @@ __decorate([
 exports.PreregisteredContact = PreregisteredContact = __decorate([
     (0, typeorm_1.Entity)({ name: "preregistered_contacts" })
 ], PreregisteredContact);
+//# sourceMappingURL=PreregisteredContact.js.map

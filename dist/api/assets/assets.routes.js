@@ -39,3 +39,4 @@ router.get("/groups/:groupName/unregistered", (0, validation_middleware_1.valida
     params: joi_1.default.object({ groupName: joi_1.default.string().required() }),
 }), assets_controller_1.getUnregisteredInGroup);
 exports.default = router;
+//# sourceMappingURL=assets.routes.js.map
