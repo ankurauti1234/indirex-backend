@@ -1,3 +1,4 @@
+// src/config/env.ts
 import * as dotenv from "dotenv";
 dotenv.config();
 
@@ -17,6 +18,16 @@ export const env = {
     user: process.env.POSTGRES_USER!,
     password: process.env.POSTGRES_PASSWORD!,
     database: process.env.POSTGRES_DB!,
+  },
+
+  // New: SSH Tunnel Config
+  ssh: {
+    enabled: process.env.USE_SSH_TUNNEL === "false",
+    host: process.env.SSH_HOST!,
+    port: Number(process.env.SSH_PORT) || 22,
+    user: process.env.SSH_USER!,
+    keyPath: process.env.SSH_KEY_PATH!,
+    localPort: Number(process.env.LOCAL_TUNNEL_PORT) || 5433,
   },
 
   jwt: {
@@ -62,4 +73,4 @@ export const env = {
       return raw.filter(o => o !== "http://localhost:3000");
     })(),
   },
-};
+};  

@@ -10,13 +10,18 @@ export const getReport = async (req: Request, res: Response) => {
     const format = (req.query.format as "json" | "csv" | "xlsx" | "xml") || "json";
 
     if (format !== "json") {
-      // Set headers for download
-      res.setHeader("Content-Disposition", `attachment; filename="events-report-${format}.${
-        format === "xlsx" ? "xlsx" : format
-      }`);
-      res.setHeader("Content-Type", format === "xlsx" ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : `application/${format}`);
+      const ext = format === "xlsx" ? "xlsx" : format;
+      res.setHeader("Content-Disposition", `attachment; filename="events-report.${ext}"`);
+      res.setHeader(
+        "Content-Type",
+        format === "xlsx"
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : format === "csv"
+          ? "text/csv"
+          : "application/xml"
+      );
     }
- 
+
     const data = await service.getReport(req.query as any, format as any);
 
     if (format === "json") {
@@ -24,9 +29,9 @@ export const getReport = async (req: Request, res: Response) => {
     } else if (typeof data === "string") {
       res.send(data);
     } else {
-      res.send(data);
+      res.send(data); // Buffer for xlsx
     }
   } catch (e: any) {
-    sendError(res, e.message, 400);
+    sendError(res, e.message || "Failed to generate report", 400);
   }
 };

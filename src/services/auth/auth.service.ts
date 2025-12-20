@@ -11,10 +11,12 @@ import {
   RefreshPayload,
   verifyToken,
 } from "../../config/jwt";
-import { sendAccountCreationEmail,sendNewPassword } from "../../utils/email";
+import {
+  sendAccountCreationEmail,
+  sendNewPassword,
+} from "../../utils/email";
 import { randomBytes } from "crypto";
 import { MoreThan } from "typeorm";
-import { log } from "console";
 
 interface GetAllUsersParams {
   page: number;
@@ -40,11 +42,11 @@ export class AuthService {
     if (exists) throw new Error("Email already in use");
 
     const tempPassword = randomBytes(8).toString("hex");
-    const hash = await hashPassword(tempPassword);
+    const hashedPassword = await hashPassword(tempPassword);
 
     const user = this.userRepo.create({
       email: dto.email,
-      password: tempPassword,
+      password: hashedPassword, // ✅ FIXED
       name: dto.name,
       role: dto.role ?? UserRole.VIEWER,
       isActive: false,
@@ -75,16 +77,17 @@ export class AuthService {
     const refreshToken = generateRefreshToken(refreshPayload);
 
     // Save refresh token
-    // cast to any to satisfy entity partial typing (entity may have different declared types)
     const tokenRecord = this.refreshRepo.create({
       token: refreshToken,
-      userId: user.id, // string (UUID)
+      userId: user.id, // ✅ string UUID
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       revoked: false,
     } as any);
+
     await this.refreshRepo.save(tokenRecord);
 
     const isProd = env.nodeEnv === "production";
+
     res.cookie("access_token", accessToken, {
       httpOnly: true,
       secure: isProd,
@@ -92,6 +95,7 @@ export class AuthService {
       maxAge: 60 * 60 * 1000,
       sameSite: "lax",
     });
+
     res.cookie("refresh_token", refreshToken, {
       httpOnly: true,
       secure: isProd,
@@ -118,11 +122,13 @@ export class AuthService {
     newPassword: string
   ) {
     const user = await this.userRepo.findOneByOrFail({ id: userId });
+
     const isMatch = await comparePassword(oldPassword, user.password);
     if (!isMatch) throw new Error("Current password is incorrect");
 
     user.password = await hashPassword(newPassword);
     user.isActive = true;
+
     await this.userRepo.save(user);
   }
 
@@ -136,7 +142,7 @@ export class AuthService {
     const tokenRecord = await this.refreshRepo.findOne({
       where: {
         token: refreshToken,
-        userId: payload.id, // convert to number
+        user: { id: payload.id }, // ✅ Use relation instead of userId
         revoked: false,
         expiresAt: MoreThan(new Date()),
       },
@@ -150,13 +156,17 @@ export class AuthService {
       role: tokenRecord.user.role,
     });
 
-    const newRefreshToken = generateRefreshToken({ id: tokenRecord.user.id });
+    const newRefreshToken = generateRefreshToken({
+      id: tokenRecord.user.id,
+    });
+
     await this.refreshRepo.update(tokenRecord.id, {
       token: newRefreshToken,
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
     const isProd = env.nodeEnv === "production";
+
     res.cookie("access_token", newAccessToken, {
       httpOnly: true,
       secure: isProd,
@@ -164,6 +174,7 @@ export class AuthService {
       maxAge: 60 * 60 * 1000,
       sameSite: "lax",
     });
+
     res.cookie("refresh_token", newRefreshToken, {
       httpOnly: true,
       secure: isProd,
@@ -186,6 +197,7 @@ export class AuthService {
   async getUserById(id: string) {
     const user = await this.userRepo.findOneBy({ id });
     if (!user) throw new Error("User not found");
+
     return {
       id: user.id,
       email: user.email,
@@ -203,6 +215,7 @@ export class AuthService {
     if (dto.role) user.role = dto.role;
 
     await this.userRepo.save(user);
+
     return {
       id: user.id,
       email: user.email,
@@ -217,66 +230,59 @@ export class AuthService {
     if (!user) throw new Error("User not found");
 
     await this.revokeRefreshTokens(userId);
-    console.log("1");
-
     await this.userRepo.remove(user);
-    console.log("2");
 
-    return {
-      message: "User deleted successfully",
-    };
+    return { message: "User deleted successfully" };
   }
 
   // 8. REVOKE ALL TOKENS
   async revokeRefreshTokens(userId: string) {
-    await this.refreshRepo.update({ userId: userId }, { revoked: true });
+    await this.refreshRepo.update({ user: { id: userId } }, { revoked: true });
   }
 
-  //  9 forgot password
+  // 9. FORGOT PASSWORD
   async forgotPassword(dto: { email: string }) {
     const user = await this.userRepo.findOneBy({ email: dto.email });
     if (!user) throw new Error("Email not found");
 
-    // Generate a temporary password
     const tempPassword = randomBytes(8).toString("hex");
-    const hash = await hashPassword(tempPassword);
+    const hashedPassword = await hashPassword(tempPassword);
 
-    await this.userRepo.update({ email: dto.email }, { password: hash });
+    await this.userRepo.update(
+      { email: dto.email },
+      { password: hashedPassword }
+    );
 
-    // Send new password via email (make sure sendNewPassword accepts the email & password)
     await sendNewPassword(user.email, tempPassword);
 
     return "New password sent successfully";
   }
 
+  // 10. GET ALL USERS (PAGINATED)
   async getAllUsers(params: GetAllUsersParams) {
     const { page, limit, search, role, isActive, sortBy, sortOrder } = params;
 
     const skip = (page - 1) * limit;
-
     const query = this.userRepo.createQueryBuilder("user");
 
-    // Search: name OR email
     if (search?.trim()) {
-      query.andWhere("(user.name ILIKE :search OR user.email ILIKE :search)", {
-        search: `%${search.trim()}%`,
-      });
+      query.andWhere(
+        "(user.name ILIKE :search OR user.email ILIKE :search)",
+        { search: `%${search.trim()}%` }
+      );
     }
 
-    // Filters
-    if (role) {
-      query.andWhere("user.role = :role", { role });
-    }
-    if (isActive !== undefined) {
+    if (role) query.andWhere("user.role = :role", { role });
+    if (isActive !== undefined)
       query.andWhere("user.isActive = :isActive", { isActive });
-    }
 
-    // Sorting
     const validSortFields = ["name", "email", "role", "createdAt", "updatedAt"];
-    const sortField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
+    const sortField = validSortFields.includes(sortBy)
+      ? sortBy
+      : "createdAt";
+
     query.orderBy(`user.${sortField}`, sortOrder);
 
-    // Execute with pagination
     const [users, total] = await query
       .select([
         "user.id",
