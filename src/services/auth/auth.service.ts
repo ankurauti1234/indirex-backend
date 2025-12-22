@@ -50,7 +50,7 @@ export class AuthService {
 
         const user = userRepo.create({
           email: dto.email,
-          password: hashedPassword,
+          password: tempPassword,
           name: dto.name,
           role: dto.role ?? UserRole.VIEWER,
           isActive: false,
