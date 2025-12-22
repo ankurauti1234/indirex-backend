@@ -38,29 +38,35 @@ export class AuthService {
     name: string;
     role?: UserRole;
   }) {
-    const exists = await this.userRepo.findOneBy({ email: dto.email });
-    if (exists) throw new Error("Email already in use");
+    return await AppDataSource.transaction(
+      async (transactionalEntityManager) => {
+        const userRepo = transactionalEntityManager.getRepository(User);
 
-    const tempPassword = randomBytes(8).toString("hex");
-    const hashedPassword = await hashPassword(tempPassword);
+        const exists = await userRepo.findOneBy({ email: dto.email });
+        if (exists) throw new Error("Email already in use");
 
-    const user = this.userRepo.create({
-      email: dto.email,
-      password: hashedPassword, // ✅ FIXED
-      name: dto.name,
-      role: dto.role ?? UserRole.VIEWER,
-      isActive: false,
-    });
+        const tempPassword = randomBytes(8).toString("hex");
+        const hashedPassword = await hashPassword(tempPassword);
 
-    await this.userRepo.save(user);
-    await sendAccountCreationEmail(dto.email, dto.name, tempPassword);
+        const user = userRepo.create({
+          email: dto.email,
+          password: hashedPassword,
+          name: dto.name,
+          role: dto.role ?? UserRole.VIEWER,
+          isActive: false,
+        });
 
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-    };
+        await userRepo.save(user); // Or transactionalEntityManager.save(user)
+        await sendAccountCreationEmail(dto.email, dto.name, tempPassword);
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+        };
+      }
+    );
   }
 
   // 2. LOGIN
@@ -266,10 +272,9 @@ export class AuthService {
     const query = this.userRepo.createQueryBuilder("user");
 
     if (search?.trim()) {
-      query.andWhere(
-        "(user.name ILIKE :search OR user.email ILIKE :search)",
-        { search: `%${search.trim()}%` }
-      );
+      query.andWhere("(user.name ILIKE :search OR user.email ILIKE :search)", {
+        search: `%${search.trim()}%`,
+      });
     }
 
     if (role) query.andWhere("user.role = :role", { role });
@@ -277,9 +282,7 @@ export class AuthService {
       query.andWhere("user.isActive = :isActive", { isActive });
 
     const validSortFields = ["name", "email", "role", "createdAt", "updatedAt"];
-    const sortField = validSortFields.includes(sortBy)
-      ? sortBy
-      : "createdAt";
+    const sortField = validSortFields.includes(sortBy) ? sortBy : "createdAt";
 
     query.orderBy(`user.${sortField}`, sortOrder);
 
