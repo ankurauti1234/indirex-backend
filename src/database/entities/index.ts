@@ -13,3 +13,5 @@ export * from "./MeterAssignment";
 export * from "./PreregisteredContact";
 export * from "./EventMapping";
 export * from "./DecommissionLog";
+export * from "./GeneratedHhBridgeReport";
+export * from "./GeneratedHhUnbridgeReport";
