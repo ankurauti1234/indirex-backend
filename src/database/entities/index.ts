@@ -15,3 +15,5 @@ export * from "./EventMapping";
 export * from "./DecommissionLog";
 export * from "./GeneratedHhBridgeReport";
 export * from "./GeneratedHhUnbridgeReport";
+export * from "./GeneratedHHMemberwiseBridgedReport";
+export * from "./GeneratedHHMemberwiseUnbridgedReport";

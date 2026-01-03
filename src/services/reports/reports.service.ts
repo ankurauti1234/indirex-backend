@@ -3,6 +3,8 @@ import { AppDataSource } from "../../database/connection";
 import { Event } from "../../database/entities/Event";
 import { GeneratedHHBridgeReport } from "../../database/entities/GeneratedHhBridgeReport";
 import { GeneratedHHUnbridgeReport } from "../../database/entities/GeneratedHhUnbridgeReport";
+import { GeneratedHHMemberwiseBridgedReport } from "../../database/entities/GeneratedHHMemberwiseBridgedReport";
+import { GeneratedHHMemberwiseUnbridgedReport } from "../../database/entities/GeneratedHHMemberwiseUnbridgedReport";
 import { In } from "typeorm";
 import * as csvWriter from "fast-csv";
 import * as XLSX from "xlsx";
@@ -46,10 +48,36 @@ export interface PaginatedUnbridgeReports {
   };
 }
 
+export interface PaginatedMemberwiseBridgeReports {
+  reports: GeneratedHHMemberwiseBridgedReport[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+export interface PaginatedMemberwiseUnbridgeReports {
+  reports: GeneratedHHMemberwiseUnbridgedReport[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
 export class ReportsService {
   private repo = AppDataSource.getRepository(Event);
   private bridgeRepo = AppDataSource.getRepository(GeneratedHHBridgeReport);
   private unbridgeRepo = AppDataSource.getRepository(GeneratedHHUnbridgeReport);
+  private memberwiseBridgeRepo = AppDataSource.getRepository(
+    GeneratedHHMemberwiseBridgedReport
+  );
+  private memberwiseUnbridgeRepo = AppDataSource.getRepository(
+    GeneratedHHMemberwiseUnbridgedReport
+  );
 
   private toNum(val: any): number | undefined {
     if (val === undefined || val === null || val === "") return undefined;
@@ -69,7 +97,9 @@ export class ReportsService {
     if (type !== undefined) {
       let types: number[] = [];
       if (Array.isArray(type)) {
-        types = type.map((t) => this.toNum(t)).filter((t): t is number => t !== undefined);
+        types = type
+          .map((t) => this.toNum(t))
+          .filter((t): t is number => t !== undefined);
       } else if (typeof type === "string") {
         types = type
           .split(",")
@@ -135,9 +165,14 @@ export class ReportsService {
     const end = this.toNum(end_time);
 
     if (start !== undefined && end !== undefined) {
-      qb.andWhere("report.report_date BETWEEN to_timestamp(:start)::date AND to_timestamp(:end)::date", { start, end });
+      qb.andWhere(
+        "report.report_date BETWEEN to_timestamp(:start)::date AND to_timestamp(:end)::date",
+        { start, end }
+      );
     } else if (start !== undefined) {
-      qb.andWhere("report.report_date >= to_timestamp(:start)::date", { start });
+      qb.andWhere("report.report_date >= to_timestamp(:start)::date", {
+        start,
+      });
     } else if (end !== undefined) {
       qb.andWhere("report.report_date <= to_timestamp(:end)::date", { end });
     }
@@ -180,9 +215,14 @@ export class ReportsService {
     const end = this.toNum(end_time);
 
     if (start !== undefined && end !== undefined) {
-      qb.andWhere("report.report_date BETWEEN to_timestamp(:start)::date AND to_timestamp(:end)::date", { start, end });
+      qb.andWhere(
+        "report.report_date BETWEEN to_timestamp(:start)::date AND to_timestamp(:end)::date",
+        { start, end }
+      );
     } else if (start !== undefined) {
-      qb.andWhere("report.report_date >= to_timestamp(:start)::date", { start });
+      qb.andWhere("report.report_date >= to_timestamp(:start)::date", {
+        start,
+      });
     } else if (end !== undefined) {
       qb.andWhere("report.report_date <= to_timestamp(:end)::date", { end });
     }
@@ -297,7 +337,9 @@ export class ReportsService {
     }
   }
 
-  private async toBridgeCSV(reports: GeneratedHHBridgeReport[]): Promise<string> {
+  private async toBridgeCSV(
+    reports: GeneratedHHBridgeReport[]
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const csvStream = csvWriter.format({ headers: true });
       const rows = reports.map((r) => ({
@@ -365,7 +407,9 @@ export class ReportsService {
     }
   }
 
-  private async toUnbridgeCSV(reports: GeneratedHHUnbridgeReport[]): Promise<string> {
+  private async toUnbridgeCSV(
+    reports: GeneratedHHUnbridgeReport[]
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const csvStream = csvWriter.format({ headers: true });
       const rows = reports.map((r) => ({
@@ -415,5 +459,149 @@ export class ReportsService {
       },
     };
     return builder.build(root);
+  }
+
+  async getMemberwiseBridgeReports(
+    filters: ReportFilters = {},
+    format: "json" | "csv" | "xlsx" | "xml" = "json"
+  ): Promise<PaginatedMemberwiseBridgeReports | string | Buffer> {
+    const { start_time, end_time, page = 1, limit = 25 } = filters;
+
+    const qb = this.memberwiseBridgeRepo.createQueryBuilder("report");
+
+    const start = this.toNum(start_time);
+    const end = this.toNum(end_time);
+
+    if (start !== undefined && end !== undefined) {
+      qb.andWhere("report.report_date BETWEEN to_timestamp(:start)::date AND to_timestamp(:end)::date", { start, end });
+    } else if (start !== undefined) {
+      qb.andWhere("report.report_date >= to_timestamp(:start)::date", { start });
+    } else if (end !== undefined) {
+      qb.andWhere("report.report_date <= to_timestamp(:end)::date", { end });
+    }
+
+    qb.orderBy("report.report_date", "DESC");
+
+    if (format === "json") {
+      const take = Math.min(limit || 25, 100);
+      const skip = (page - 1) * take;
+
+      qb.take(take).skip(skip);
+
+      const [reports, total] = await qb.getManyAndCount();
+
+      return {
+        reports,
+        pagination: {
+          page,
+          limit: take,
+          total,
+          pages: Math.ceil(total / take),
+        },
+      };
+    }
+
+    const allReports = await qb.getMany();
+
+    return await this.exportMemberwiseBridgeReports(allReports, format);
+  }
+
+  async getMemberwiseUnbridgeReports(
+    filters: ReportFilters = {},
+    format: "json" | "csv" | "xlsx" | "xml" = "json"
+  ): Promise<PaginatedMemberwiseUnbridgeReports | string | Buffer> {
+    const { start_time, end_time, page = 1, limit = 25 } = filters;
+
+    const qb = this.memberwiseUnbridgeRepo.createQueryBuilder("report");
+
+    const start = this.toNum(start_time);
+    const end = this.toNum(end_time);
+
+    if (start !== undefined && end !== undefined) {
+      qb.andWhere("report.report_date BETWEEN to_timestamp(:start)::date AND to_timestamp(:end)::date", { start, end });
+    } else if (start !== undefined) {
+      qb.andWhere("report.report_date >= to_timestamp(:start)::date", { start });
+    } else if (end !== undefined) {
+      qb.andWhere("report.report_date <= to_timestamp(:end)::date", { end });
+    }
+
+    qb.orderBy("report.report_date", "DESC");
+
+    if (format === "json") {
+      const take = Math.min(limit || 25, 100);
+      const skip = (page - 1) * take;
+
+      qb.take(take).skip(skip);
+
+      const [reports, total] = await qb.getManyAndCount();
+
+      return {
+        reports,
+        pagination: {
+          page,
+          limit: take,
+          total,
+          pages: Math.ceil(total / take),
+        },
+      };
+    }
+
+    const allReports = await qb.getMany();
+
+    return await this.exportMemberwiseUnbridgeReports(allReports, format);
+  }
+
+  // Export helpers
+  private async exportMemberwiseBridgeReports(
+    reports: GeneratedHHMemberwiseBridgedReport[],
+    format: "csv" | "xlsx" | "xml"
+  ): Promise<string | Buffer> {
+    return this.exportGenericMemberwiseReports(reports, format, "MemberwiseBridge");
+  }
+
+  private async exportMemberwiseUnbridgeReports(
+    reports: GeneratedHHMemberwiseUnbridgedReport[],
+    format: "csv" | "xlsx" | "xml"
+  ): Promise<string | Buffer> {
+    return this.exportGenericMemberwiseReports(reports, format, "MemberwiseUnbridge");
+  }
+
+  private async exportGenericMemberwiseReports(
+    reports: any[],
+    format: "csv" | "xlsx" | "xml",
+    sheetName: string
+  ): Promise<string | Buffer> {
+    const data = reports.map((r) => ({
+      id: r.id,
+      generation_time: r.generation_time.toISOString(),
+      report_date: r.report_date.toISOString().split("T")[0],
+      report_url: r.report_url,
+      session_count: r.session_count,
+    }));
+
+    switch (format) {
+      case "csv":
+        return new Promise((resolve, reject) => {
+          const csvStream = csvWriter.format({ headers: true });
+          let csv = "";
+          csvStream.on("data", (chunk) => (csv += chunk));
+          csvStream.on("end", () => resolve(csv));
+          csvStream.on("error", reject);
+          data.forEach((row) => csvStream.write(row));
+          csvStream.end();
+        });
+      case "xlsx":
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+      case "xml":
+        const builder = new XMLBuilder({ format: true });
+        return builder.build({
+          reports: { report: data },
+        });
+      default:
+        throw new Error("Unsupported format");
+    }
   }
 }

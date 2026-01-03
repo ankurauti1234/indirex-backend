@@ -97,3 +97,65 @@ export const getUnbridge = async (req: Request, res: Response) => {
     sendError(res, e.message || "Failed to generate unbridge report", 400);
   }
 };
+
+export const getMemberwiseBridge = async (req: Request, res: Response) => {
+  try {
+    const format = (req.query.format as "json" | "csv" | "xlsx" | "xml") || "json";
+
+    if (format !== "json") {
+      const ext = format === "xlsx" ? "xlsx" : format;
+      res.setHeader("Content-Disposition", `attachment; filename="memberwise-bridge-report.${ext}"`);
+      res.setHeader(
+        "Content-Type",
+        format === "xlsx"
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : format === "csv"
+          ? "text/csv"
+          : "application/xml"
+      );
+    }
+
+    const data = await service.getMemberwiseBridgeReports(req.query as any, format as any);
+
+    if (format === "json") {
+      sendSuccess(res, data, "Memberwise Bridge report generated");
+    } else if (typeof data === "string") {
+      res.send(data);
+    } else {
+      res.send(data);
+    }
+  } catch (e: any) {
+    sendError(res, e.message || "Failed to generate memberwise bridge report", 400);
+  }
+};
+
+export const getMemberwiseUnbridge = async (req: Request, res: Response) => {
+  try {
+    const format = (req.query.format as "json" | "csv" | "xlsx" | "xml") || "json";
+
+    if (format !== "json") {
+      const ext = format === "xlsx" ? "xlsx" : format;
+      res.setHeader("Content-Disposition", `attachment; filename="memberwise-unbridge-report.${ext}"`);
+      res.setHeader(
+        "Content-Type",
+        format === "xlsx"
+          ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          : format === "csv"
+          ? "text/csv"
+          : "application/xml"
+      );
+    }
+
+    const data = await service.getMemberwiseUnbridgeReports(req.query as any, format as any);
+
+    if (format === "json") {
+      sendSuccess(res, data, "Memberwise Unbridge report generated");
+    } else if (typeof data === "string") {
+      res.send(data);
+    } else {
+      res.send(data);
+    }
+  } catch (e: any) {
+    sendError(res, e.message || "Failed to generate memberwise unbridge report", 400);
+  }
+};
