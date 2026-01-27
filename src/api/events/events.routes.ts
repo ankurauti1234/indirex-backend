@@ -5,11 +5,17 @@ import {
   getEventsByType,
   getAlerts,
   getAlertsByDevice,
+  getLiveMonitoring,
+  getViewership,
 } from "./events.controller";
 import eventMappingRouter from "./event-mapping.routes";
 import meterChannelsRouter from "./meter-channels.routes";
 import { validationMiddleware } from "../../middleware/validation.middleware";
-import { eventsQuerySchema } from "./events.validation";
+import { 
+  eventsQuerySchema,
+  liveMonitoringQuerySchema,
+  viewershipQuerySchema
+} from "./events.validation";
 import Joi from "joi";
 import { EventService } from "../../services/events/event.service"; // ← Static import
 
@@ -39,6 +45,19 @@ router.get(
     query: eventsQuerySchema,
   }),
   getAlertsByDevice
+);
+
+// === Live Monitoring & Viewership ===
+router.get(
+  "/live-monitoring",
+  validationMiddleware({ query: liveMonitoringQuerySchema }),
+  getLiveMonitoring
+);
+
+router.get(
+  "/viewership",
+  validationMiddleware({ query: viewershipQuerySchema }),
+  getViewership
 );
 
 router.use("/meter-channels", meterChannelsRouter);

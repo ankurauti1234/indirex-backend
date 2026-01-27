@@ -60,3 +60,37 @@ export const getAlertsByDevice = async (req: Request, res: Response) => {
     sendSuccess(res, { events: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }, "No alerts");
   }
 };
+
+export const getLiveMonitoring = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      device_id: req.query.device_id?.toString(),
+      hhid: req.query.hhid?.toString(),
+      date: req.query.date?.toString(),
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
+    };
+    const data = await service.getLiveMonitoring(filters);
+    sendSuccess(res, data, "Live monitoring data retrieved");
+  } catch (e: any) {
+    console.error("getLiveMonitoring error:", e);
+    sendSuccess(res, { data: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error retrieving live monitoring data");
+  }
+};
+
+export const getViewership = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      device_id: req.query.device_id?.toString(),
+      hhid: req.query.hhid?.toString(),
+      date: req.query.date?.toString(),
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
+    };
+    const data = await service.getViewership(filters);
+    sendSuccess(res, data, "Viewership data retrieved");
+  } catch (e: any) {
+    console.error("getViewership error:", e);
+    sendSuccess(res, { data: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error retrieving viewership data");
+  }
+};

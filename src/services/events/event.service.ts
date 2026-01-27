@@ -1,5 +1,14 @@
 // src/services/events/event.service.ts
-import { EventFilters, PaginatedEvents } from "../../api/events/events.types";
+import {
+  EventFilters,
+  PaginatedEvents,
+  LiveMonitoringFilters,
+  PaginatedLiveMonitoring,
+  ViewershipFilters,
+  PaginatedViewership,
+  LiveMonitoringItem,
+  ViewershipItem
+} from "../../api/events/events.types";
 import { AppDataSource } from "../../database/connection";
 import { Event } from "../../database/entities/Event";
 import { EventMappingService } from "./event-mapping.service";
@@ -15,7 +24,7 @@ export class EventService {
     const n = Number(val);
     return isNaN(n) ? undefined : n;
   }
- 
+
   async getEvents(filters: EventFilters = {}): Promise<PaginatedEvents> {
     const {
       device_id,
@@ -105,4 +114,184 @@ export class EventService {
       .getRawOne();
     console.log("DB timestamps → min:", result.min, "max:", result.max);
   }
+
+  /**
+   * Get live monitoring data - assigned meters with last event timestamp
+   */
+  async getLiveMonitoring(filters: LiveMonitoringFilters = {}): Promise<PaginatedLiveMonitoring> {
+    const { device_id, hhid, date, page = 1, limit = 25 } = filters;
+
+    const take = Math.min(limit, 100);
+    const skip = (page - 1) * take;
+
+    // Calculate date range (default to today)
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const startTimestamp = Math.floor(startOfDay.getTime() / 1000);
+    const endTimestamp = Math.floor(endOfDay.getTime() / 1000);
+
+    // Prepare dynamic conditions
+    const conditions: string[] = [];
+
+    if (device_id) conditions.push(`m.meter_id ILIKE $${conditions.length + 3}`);
+    if (hhid) conditions.push(`h.hhid ILIKE $${conditions.length + 3 + (device_id ? 1 : 0)}`);
+
+    // Add pagination params
+    const params: any[] = [startTimestamp, endTimestamp];
+    if (device_id) params.push(`%${device_id}%`);
+    if (hhid) params.push(`%${hhid}%`);
+    params.push(take, skip);
+
+    // Query with latest household per meter and meter range filter
+    const query = `
+    WITH latest_assignments AS (
+      SELECT DISTINCT ON (ma.meter_id)
+        ma.meter_id,
+        ma.household_id
+      FROM meter_assignments ma
+      INNER JOIN meters m ON ma.meter_id = m.id
+      WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
+      ORDER BY ma.meter_id, ma.assigned_at DESC
+    )
+    SELECT
+      m.meter_id AS device_id,
+      h.hhid,
+      MAX(e.timestamp) AS last_event_timestamp,
+      COUNT(*) OVER() AS total_count
+    FROM latest_assignments la
+    INNER JOIN meters m ON la.meter_id = m.id
+    INNER JOIN households h ON la.household_id = h.id
+    LEFT JOIN events e ON e.device_id = m.meter_id
+      AND e.timestamp >= $1
+      AND e.timestamp <= $2
+    ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+    GROUP BY m.meter_id, h.hhid
+    ORDER BY last_event_timestamp DESC NULLS LAST
+    LIMIT $${params.length - 1}
+    OFFSET $${params.length}
+  `;
+
+    const results = await AppDataSource.query(query, params);
+
+    const data: LiveMonitoringItem[] = results.map((row: any) => ({
+      device_id: row.device_id,
+      hhid: row.hhid,
+      last_event_timestamp: row.last_event_timestamp ? parseInt(row.last_event_timestamp) : null,
+    }));
+
+    const total = results.length > 0 ? parseInt(results[0].total_count) : 0;
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit: take,
+        total,
+        pages: Math.ceil(total / take),
+      },
+    };
+  }
+
+
+  /**
+   * Get viewership data - assigned meters with event type counts
+   */
+  async getViewership(filters: ViewershipFilters = {}): Promise<PaginatedViewership> {
+    const { device_id, hhid, date, page = 1, limit = 25 } = filters;
+
+    const take = Math.min(limit, 100);
+    const skip = (page - 1) * take;
+
+    // Calculate date range (default to today)
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const startTimestamp = Math.floor(startOfDay.getTime() / 1000);
+    const endTimestamp = Math.floor(endOfDay.getTime() / 1000);
+
+    // Prepare dynamic conditions
+    const conditions: string[] = [];
+    const params: any[] = [startTimestamp, endTimestamp];
+
+    if (device_id) {
+      params.push(`%${device_id}%`);
+      conditions.push(`m.meter_id ILIKE $${params.length}`);
+    }
+    if (hhid) {
+      params.push(`%${hhid}%`);
+      conditions.push(`h.hhid ILIKE $${params.length}`);
+    }
+
+    // Add pagination params
+    params.push(take, skip);
+
+    const query = `
+  WITH latest_assignments AS (
+    SELECT DISTINCT ON (ma.meter_id)
+      ma.meter_id,
+      ma.household_id
+    FROM meter_assignments ma
+    INNER JOIN meters m ON ma.meter_id = m.id
+    WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
+    ORDER BY ma.meter_id, ma.assigned_at DESC
+  )
+  SELECT 
+    m.meter_id AS device_id,
+    h.hhid,
+    COUNT(CASE WHEN e.type = 3 THEN 1 END) AS type3_count,
+    COUNT(CASE WHEN e.type = 29 THEN 1 END) AS type29_count,
+    COUNT(CASE WHEN e.type = 36 THEN 1 END) AS type36_count,
+    COUNT(CASE WHEN e.type = 37 THEN 1 END) AS type37_count,
+    COUNT(CASE WHEN e.type = 42 THEN 1 END) AS type42_count,
+    COUNT(*) OVER() AS total_count
+  FROM latest_assignments la
+  INNER JOIN meters m ON la.meter_id = m.id
+  INNER JOIN households h ON la.household_id = h.id
+  LEFT JOIN events e ON e.device_id = m.meter_id
+    AND e.timestamp >= $1
+    AND e.timestamp <= $2
+    AND e.type IN (3, 29, 36, 37, 42)
+  ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+  GROUP BY m.meter_id, h.hhid
+  ORDER BY m.meter_id
+  LIMIT $${params.length - 1}
+  OFFSET $${params.length}
+`;
+
+
+
+    const results = await AppDataSource.query(query, params);
+
+    const data: ViewershipItem[] = results.map((row: any) => ({
+      device_id: row.device_id,
+      hhid: row.hhid,
+      date: targetDate,
+      type3_count: parseInt(row.type3_count) || 0,
+      type29_count: parseInt(row.type29_count) || 0,
+      type36_count: parseInt(row.type36_count) || 0,
+      type37_count: parseInt(row.type37_count) || 0,
+      type42_count: parseInt(row.type42_count) || 0,
+    }));
+
+    const total = results.length > 0 ? parseInt(results[0].total_count) : 0;
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit: take,
+        total,
+        pages: Math.ceil(total / take),
+      },
+    };
+  }
+
+
 }

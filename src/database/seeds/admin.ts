@@ -3,33 +3,33 @@ import { AppDataSource } from "../connection";
 import { User, UserRole } from "../entities/User";
 import { hashPassword } from "../../utils/encryption";
 
-export const seedAdmin = async () => {
+export const seedUser = async () => {
   await AppDataSource.initialize();
 
   const repo = AppDataSource.getRepository(User);
-  const admin = await repo.findOneBy({ email: "ravindra.gaikwad@inditronics.com" });
+  const admin = await repo.findOneBy({ email: "manoj.patidar@inditronics.com" });
 
   if (admin) {
-    console.log("Admin already exists – skipping seed");
+    console.log("User already exists – skipping seed");
     await AppDataSource.destroy();
     return;
   }
 
-  const hash = await hashPassword("Ravindra@123");
+  const hash = await hashPassword("Manoj@123");
   await repo.insert({
-    email: "ravindra.gaikwad@inditronics.com",
+    email: "manoj.patidar@inditronics.com",
     password: hash,
-    name: "Ravindra Gaikwad",
-    role: UserRole.ADMIN
+    name: "Manoj Patidar",
+    role: UserRole.DEVELOPER
   });
 
-  console.log("Admin seeded");
+  console.log("User seeded");
   await AppDataSource.destroy();
 };
 
 // Allow direct execution: node dist/database/seeds/admin.js
 if (require.main === module) {
-  seedAdmin().catch((e) => {
+  seedUser().catch((e) => {
     console.error(e);
     process.exit(1);
   });
