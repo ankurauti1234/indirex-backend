@@ -8,6 +8,7 @@ interface Conn {
   conn: any;
   stream: any;
   logId: string;
+  port: number;
   ws: WebSocket;
 }
 
@@ -30,25 +31,24 @@ export function setupRemoteAccessWebSocket(wss: WebSocketServer) {
         );
       }
 
-      // CONNECT
+      // CONNECT - Auto-discover port
       if (data.type === "connect") {
-        const { meterId, port, userId } = data;
-        if (!meterId || !port || !userId) {
+        const { meterId, userId } = data;
+        if (!meterId || !userId) {
           return ws.send(
-            JSON.stringify({ type: "error", error: "Missing fields" })
+            JSON.stringify({ type: "error", error: "Missing meterId or userId" })
           );
         }
 
         try {
-          const { conn, stream, logId } = await service.startTunnel(
+          const { conn, stream, logId, port } = await service.startTunnel(
             meterId,
-            port,
             userId,
             clientIp,
             userAgent
           );
 
-          connections.set(ws, { conn, stream, logId, ws });
+          connections.set(ws, { conn, stream, logId, port, ws });
 
           stream.on("data", (d: Buffer) =>
             ws.send(JSON.stringify({ type: "output", data: d.toString() }))
@@ -61,7 +61,52 @@ export function setupRemoteAccessWebSocket(wss: WebSocketServer) {
             conn.end();
           });
 
-          ws.send(JSON.stringify({ type: "connected" }));
+          ws.send(JSON.stringify({ 
+            type: "connected", 
+            port,
+            meterId 
+          }));
+        } catch (e: any) {
+          ws.send(JSON.stringify({ type: "error", error: e.message }));
+        }
+      }
+
+      // CONNECT_WITH_PORT - Legacy method with explicit port
+      if (data.type === "connect_with_port") {
+        const { meterId, port, userId } = data;
+        if (!meterId || !port || !userId) {
+          return ws.send(
+            JSON.stringify({ type: "error", error: "Missing fields" })
+          );
+        }
+
+        try {
+          const { conn, stream, logId } = await service.startTunnelWithPort(
+            meterId,
+            port,
+            userId,
+            clientIp,
+            userAgent
+          );
+
+          connections.set(ws, { conn, stream, logId, port, ws });
+
+          stream.on("data", (d: Buffer) =>
+            ws.send(JSON.stringify({ type: "output", data: d.toString() }))
+          );
+
+          stream.on("close", async () => {
+            await service.endTunnel(logId);
+            ws.send(JSON.stringify({ type: "disconnected" }));
+            connections.delete(ws);
+            conn.end();
+          });
+
+          ws.send(JSON.stringify({ 
+            type: "connected", 
+            port,
+            meterId 
+          }));
         } catch (e: any) {
           ws.send(JSON.stringify({ type: "error", error: e.message }));
         }
