@@ -7,11 +7,13 @@ import {
   getAlertsByDevice,
   getLiveMonitoring,
   getViewership,
+  getConnectivityReport,
+  getButtonPressedReport,
 } from "./events.controller";
 import eventMappingRouter from "./event-mapping.routes";
 import meterChannelsRouter from "./meter-channels.routes";
 import { validationMiddleware } from "../../middleware/validation.middleware";
-import { 
+import {
   eventsQuerySchema,
   liveMonitoringQuerySchema,
   viewershipQuerySchema
@@ -58,6 +60,18 @@ router.get(
   "/viewership",
   validationMiddleware({ query: viewershipQuerySchema }),
   getViewership
+);
+
+router.get(
+  "/connectivity-report",
+  validationMiddleware({ query: viewershipQuerySchema }),
+  getConnectivityReport
+);
+
+router.get(
+  "/button-pressed-report",
+  validationMiddleware({ query: viewershipQuerySchema }),
+  getButtonPressedReport
 );
 
 router.use("/meter-channels", meterChannelsRouter);

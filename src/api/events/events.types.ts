@@ -56,13 +56,48 @@ export interface ViewershipFilters {
 export interface ViewershipItem {
   device_id: string;
   hhid: string;
-  type2_count: number;
-  type29_count: number;
-  type42_count: number;
+  viewership: "Yes" | "No";
+  date: string;
 }
 
 export interface PaginatedViewership {
   data: ViewershipItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+// Connectivity Report Types
+export interface ConnectivityReportItem {
+  device_id: string;
+  hhid: string;
+  connectivity: "Yes" | "No";
+  date: string;
+}
+
+export interface PaginatedConnectivityReport {
+  data: ConnectivityReportItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+// Button Pressed Report Types
+export interface ButtonPressedReportItem {
+  device_id: string;
+  hhid: string;
+  button_pressed: "Yes" | "No";
+  date: string;
+}
+
+export interface PaginatedButtonPressedReport {
+  data: ButtonPressedReportItem[];
   pagination: {
     page: number;
     limit: number;

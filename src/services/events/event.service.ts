@@ -7,7 +7,11 @@ import {
   ViewershipFilters,
   PaginatedViewership,
   LiveMonitoringItem,
-  ViewershipItem
+  ViewershipItem,
+  ConnectivityReportItem,
+  PaginatedConnectivityReport,
+  ButtonPressedReportItem,
+  PaginatedButtonPressedReport
 } from "../../api/events/events.types";
 import { AppDataSource } from "../../database/connection";
 import { Event } from "../../database/entities/Event";
@@ -119,34 +123,29 @@ export class EventService {
    * Get live monitoring data - assigned meters with last event timestamp
    */
   async getLiveMonitoring(filters: LiveMonitoringFilters = {}): Promise<PaginatedLiveMonitoring> {
-    const { device_id, hhid, date, page = 1, limit = 25 } = filters;
+    const { device_id, hhid, page = 1, limit = 25 } = filters;
 
-    const take = Math.min(limit, 100);
+    // Remove strict limit cap to support large exports if requested
+    const take = limit;
     const skip = (page - 1) * take;
-
-    // Calculate date range (default to today)
-    const targetDate = date || new Date().toISOString().split('T')[0];
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const startTimestamp = Math.floor(startOfDay.getTime() / 1000);
-    const endTimestamp = Math.floor(endOfDay.getTime() / 1000);
 
     // Prepare dynamic conditions
     const conditions: string[] = [];
+    const params: any[] = [];
 
-    if (device_id) conditions.push(`m.meter_id ILIKE $${conditions.length + 3}`);
-    if (hhid) conditions.push(`h.hhid ILIKE $${conditions.length + 3 + (device_id ? 1 : 0)}`);
+    if (device_id) {
+      params.push(`%${device_id}%`);
+      conditions.push(`m.meter_id ILIKE $${params.length}`);
+    }
+    if (hhid) {
+      params.push(`%${hhid}%`);
+      conditions.push(`h.hhid ILIKE $${params.length}`);
+    }
 
     // Add pagination params
-    const params: any[] = [startTimestamp, endTimestamp];
-    if (device_id) params.push(`%${device_id}%`);
-    if (hhid) params.push(`%${hhid}%`);
     params.push(take, skip);
 
-    // Query with latest household per meter and meter range filter
+    // Query with latest household per meter and absolute last event timestamp using LATERAL JOIN
     const query = `
     WITH latest_assignments AS (
       SELECT DISTINCT ON (ma.meter_id)
@@ -160,17 +159,20 @@ export class EventService {
     SELECT
       m.meter_id AS device_id,
       h.hhid,
-      MAX(e.timestamp) AS last_event_timestamp,
+      le.last_event_timestamp,
       COUNT(*) OVER() AS total_count
     FROM latest_assignments la
     INNER JOIN meters m ON la.meter_id = m.id
     INNER JOIN households h ON la.household_id = h.id
-    LEFT JOIN events e ON e.device_id = m.meter_id
-      AND e.timestamp >= $1
-      AND e.timestamp <= $2
+    LEFT JOIN LATERAL (
+      SELECT timestamp AS last_event_timestamp
+      FROM events e
+      WHERE e.device_id = m.meter_id
+      ORDER BY e.timestamp DESC
+      LIMIT 1
+    ) le ON TRUE
     ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
-    GROUP BY m.meter_id, h.hhid
-    ORDER BY last_event_timestamp DESC NULLS LAST
+    ORDER BY le.last_event_timestamp DESC NULLS LAST
     LIMIT $${params.length - 1}
     OFFSET $${params.length}
   `;
@@ -197,13 +199,29 @@ export class EventService {
   }
 
 
-  /**
-   * Get viewership data - assigned meters with event type counts
-   */
   async getViewership(filters: ViewershipFilters = {}): Promise<PaginatedViewership> {
+    const { data, total } = await this.getGeneralReport(filters, [3, 29, 30, 42]);
+    return {
+      data: data.map(v => ({ ...v, viewership: v.status })),
+      pagination: {
+        page: filters.page || 1,
+        limit: filters.limit || 25,
+        total,
+        pages: Math.ceil(total / (filters.limit || 25)),
+      }
+    };
+  }
+
+  /**
+   * Helper to get report data (Connectivity, Viewership, Button Pressed)
+   */
+  private async getGeneralReport(
+    filters: ViewershipFilters,
+    types?: number[]
+  ): Promise<{ data: any[]; total: number }> {
     const { device_id, hhid, date, page = 1, limit = 25 } = filters;
 
-    const take = Math.min(limit, 100);
+    const take = limit;
     const skip = (page - 1) * take;
 
     // Calculate date range (default to today)
@@ -232,66 +250,74 @@ export class EventService {
     // Add pagination params
     params.push(take, skip);
 
+    const typeCondition = types && types.length ? `AND e.type IN (${types.join(',')})` : '';
+
     const query = `
-  WITH latest_assignments AS (
-    SELECT DISTINCT ON (ma.meter_id)
-      ma.meter_id,
-      ma.household_id
-    FROM meter_assignments ma
-    INNER JOIN meters m ON ma.meter_id = m.id
-    WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
-    ORDER BY ma.meter_id, ma.assigned_at DESC
-  )
-  SELECT 
-    m.meter_id AS device_id,
-    h.hhid,
-    COUNT(CASE WHEN e.type = 3 THEN 1 END) AS type3_count,
-    COUNT(CASE WHEN e.type = 29 THEN 1 END) AS type29_count,
-    COUNT(CASE WHEN e.type = 36 THEN 1 END) AS type36_count,
-    COUNT(CASE WHEN e.type = 37 THEN 1 END) AS type37_count,
-    COUNT(CASE WHEN e.type = 42 THEN 1 END) AS type42_count,
-    COUNT(*) OVER() AS total_count
-  FROM latest_assignments la
-  INNER JOIN meters m ON la.meter_id = m.id
-  INNER JOIN households h ON la.household_id = h.id
-  LEFT JOIN events e ON e.device_id = m.meter_id
-    AND e.timestamp >= $1
-    AND e.timestamp <= $2
-    AND e.type IN (3, 29, 36, 37, 42)
-  ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
-  GROUP BY m.meter_id, h.hhid
-  ORDER BY m.meter_id
-  LIMIT $${params.length - 1}
-  OFFSET $${params.length}
-`;
-
-
+      WITH latest_assignments AS (
+        SELECT DISTINCT ON (ma.meter_id)
+          ma.meter_id,
+          ma.household_id
+        FROM meter_assignments ma
+        INNER JOIN meters m ON ma.meter_id = m.id
+        WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
+        ORDER BY ma.meter_id, ma.assigned_at DESC
+      )
+      SELECT 
+        m.meter_id AS device_id,
+        h.hhid,
+        CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status,
+        COUNT(*) OVER() AS total_count
+      FROM latest_assignments la
+      INNER JOIN meters m ON la.meter_id = m.id
+      INNER JOIN households h ON la.household_id = h.id
+      LEFT JOIN events e ON e.device_id = m.meter_id
+        AND e.timestamp >= $1
+        AND e.timestamp <= $2
+        ${typeCondition}
+      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+      GROUP BY m.meter_id, h.hhid
+      ORDER BY m.meter_id
+      LIMIT $${params.length - 1}
+      OFFSET $${params.length}
+    `;
 
     const results = await AppDataSource.query(query, params);
-
-    const data: ViewershipItem[] = results.map((row: any) => ({
-      device_id: row.device_id,
-      hhid: row.hhid,
-      date: targetDate,
-      type3_count: parseInt(row.type3_count) || 0,
-      type29_count: parseInt(row.type29_count) || 0,
-      type36_count: parseInt(row.type36_count) || 0,
-      type37_count: parseInt(row.type37_count) || 0,
-      type42_count: parseInt(row.type42_count) || 0,
-    }));
-
     const total = results.length > 0 ? parseInt(results[0].total_count) : 0;
 
     return {
-      data,
-      pagination: {
-        page,
-        limit: take,
-        total,
-        pages: Math.ceil(total / take),
-      },
+      data: results.map((row: any) => ({
+        device_id: row.device_id,
+        hhid: row.hhid,
+        status: row.status,
+        date: targetDate,
+      })),
+      total
     };
   }
 
+  async getConnectivityReport(filters: ViewershipFilters = {}): Promise<PaginatedConnectivityReport> {
+    const { data, total } = await this.getGeneralReport(filters);
+    return {
+      data: data.map(v => ({ ...v, connectivity: v.status })),
+      pagination: {
+        page: filters.page || 1,
+        limit: filters.limit || 25,
+        total,
+        pages: Math.ceil(total / (filters.limit || 25)),
+      }
+    };
+  }
 
+  async getButtonPressedReport(filters: ViewershipFilters = {}): Promise<PaginatedButtonPressedReport> {
+    const { data, total } = await this.getGeneralReport(filters, [3]);
+    return {
+      data: data.map(v => ({ ...v, button_pressed: v.status })),
+      pagination: {
+        page: filters.page || 1,
+        limit: filters.limit || 25,
+        total,
+        pages: Math.ceil(total / (filters.limit || 25)),
+      }
+    };
+  }
 }
