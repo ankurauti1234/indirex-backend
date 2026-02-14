@@ -5,10 +5,12 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { env } from "../config/env";
 
+console.log(`Initializing SMTP with host: ${env.smtp.host}, user: ${env.smtp.user}`);
+
 const transporter = nodemailer.createTransport({
   host: env.smtp.host,
   port: env.smtp.port,
-  secure: false,
+  secure: false, // true for 465, false for other ports
   auth: {
     user: env.smtp.user,
     pass: env.smtp.pass,
@@ -35,12 +37,17 @@ export const sendAccountCreationEmail = async (
     appUrl: env.appUrl,
   });
 
-  await transporter.sendMail({
-    from: `"Meter Monitoring" <${env.smtp.from}>`,
-    to,
-    subject: "Your account has been created",
-    html,
-  });
+  try {
+    await transporter.sendMail({
+      from: `"Meter Monitoring" <${env.smtp.from}>`,
+      to,
+      subject: "Your account has been created",
+      html,
+    });
+  } catch (error: any) {
+    console.error("Error sending account creation email:", error);
+    throw error;
+  }
 };
 
 export const sendNewPassword = async (to: string, tempPassword: string) => {
@@ -58,10 +65,15 @@ export const sendNewPassword = async (to: string, tempPassword: string) => {
     appUrl: env.appUrl,
   });
 
-  await transporter.sendMail({
-    from: `"Meter Monitoring" <${env.smtp.from}>`,
-    to,
-    subject: "Your New Password",
-    html,
-  });
+  try {
+    await transporter.sendMail({
+      from: `"Meter Monitoring" <${env.smtp.from}>`,
+      to,
+      subject: "Your New Password",
+      html,
+    });
+  } catch (error: any) {
+    console.error("Error sending new password email:", error);
+    throw error;
+  }
 };

@@ -6,15 +6,44 @@ import { authorize } from "../../middleware/role.middleware";
 import { UserRole } from "../../database/entities/User";
 import { validationMiddleware } from "../../middleware/validation.middleware";
 import { reportQuerySchema } from "./reports.validation";
+import { sendSuccess } from "../../utils/response";
 
 const router = Router();
 
-router.use(protect, authorize(UserRole.ADMIN, UserRole.DEVELOPER));
+// Middleware to return empty data for viewer role
+const restrictViewer = (emptyData: any) => (req: any, res: any, next: any) => {
+    if (req.user?.role === UserRole.VIEWER) {
+        return sendSuccess(res, emptyData, "Viewer Restricted Access");
+    }
+    next();
+};
 
-router.get("/", validationMiddleware({ query: reportQuerySchema }), getReport);
-router.get("/bridge", validationMiddleware({ query: reportQuerySchema }), getBridge);
-router.get("/unbridge", validationMiddleware({ query: reportQuerySchema }), getUnbridge);
-router.get("/memberwise-bridge", validationMiddleware({ query: reportQuerySchema }), getMemberwiseBridge);
-router.get("/memberwise-unbridge", validationMiddleware({ query: reportQuerySchema }), getMemberwiseUnbridge);
+router.use(protect);
+
+router.get("/",
+    validationMiddleware({ query: reportQuerySchema }),
+    restrictViewer([]),
+    getReport
+);
+router.get("/bridge",
+    validationMiddleware({ query: reportQuerySchema }),
+    restrictViewer([]),
+    getBridge
+);
+router.get("/unbridge",
+    validationMiddleware({ query: reportQuerySchema }),
+    restrictViewer([]),
+    getUnbridge
+);
+router.get("/memberwise-bridge",
+    validationMiddleware({ query: reportQuerySchema }),
+    restrictViewer([]),
+    getMemberwiseBridge
+);
+router.get("/memberwise-unbridge",
+    validationMiddleware({ query: reportQuerySchema }),
+    restrictViewer([]),
+    getMemberwiseUnbridge
+);
 
 export default router; 

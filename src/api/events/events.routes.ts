@@ -21,13 +21,34 @@ import {
 import Joi from "joi";
 import { EventService } from "../../services/events/event.service"; // ← Static import
 
+import { protect } from "../../middleware/auth.middleware";
+import { authorize } from "../../middleware/role.middleware";
+import { UserRole } from "../../database/entities/User";
+import { sendSuccess } from "../../utils/response";
+
 const router = Router();
 
+// Middleware to return empty data for viewer role on restricted routes
+const restrictViewer = (emptyData: any) => (req: any, res: any, next: any) => {
+  if (req.user?.role === UserRole.VIEWER) {
+    return sendSuccess(res, emptyData, "Viewer Restricted Access");
+  }
+  next();
+};
+
+// Protect all routes
+router.use(protect);
+
 // === Event Mapping CRUD ===
-router.use("/mapping", eventMappingRouter);
+// Only for Admin/Developer (403 Forbidden is fine here as it's not on the main dashboard)
+router.use("/mapping", authorize(UserRole.ADMIN, UserRole.DEVELOPER), eventMappingRouter);
 
 // === Events ===
-router.get("/", validationMiddleware({ query: eventsQuerySchema }), getEvents);
+router.get("/",
+  validationMiddleware({ query: eventsQuerySchema }),
+  restrictViewer({ events: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
+  getEvents
+);
 
 router.get(
   "/type/:type",
@@ -35,10 +56,15 @@ router.get(
     params: Joi.object({ type: Joi.number().required() }),
     query: eventsQuerySchema,
   }),
+  restrictViewer({ events: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
   getEventsByType
 );
 
-router.get("/alerts", validationMiddleware({ query: eventsQuerySchema }), getAlerts);
+router.get("/alerts",
+  validationMiddleware({ query: eventsQuerySchema }),
+  restrictViewer({ events: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
+  getAlerts
+);
 
 router.get(
   "/alerts/device/:device_id",
@@ -46,6 +72,7 @@ router.get(
     params: Joi.object({ device_id: Joi.string().required() }),
     query: eventsQuerySchema,
   }),
+  restrictViewer({ events: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
   getAlertsByDevice
 );
 
@@ -53,6 +80,7 @@ router.get(
 router.get(
   "/live-monitoring",
   validationMiddleware({ query: liveMonitoringQuerySchema }),
+  restrictViewer({ data: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 } }),
   getLiveMonitoring
 );
 
@@ -74,7 +102,10 @@ router.get(
   getButtonPressedReport
 );
 
-router.use("/meter-channels", meterChannelsRouter);
+router.use("/meter-channels",
+  restrictViewer({ channels: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
+  meterChannelsRouter
+);
 
 // === Debug endpoint (safe version) ===
 router.get("/debug", async (_req, res) => {

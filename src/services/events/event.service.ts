@@ -200,7 +200,7 @@ export class EventService {
 
 
   async getViewership(filters: ViewershipFilters = {}): Promise<PaginatedViewership> {
-    const { data, total } = await this.getGeneralReport(filters, [3, 29, 30, 42]);
+    const { data, total } = await this.getGeneralReport(filters, [29, 42]);
     return {
       data: data.map(v => ({ ...v, viewership: v.status })),
       pagination: {

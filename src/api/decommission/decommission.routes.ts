@@ -14,26 +14,37 @@ import {
   listAssignedMetersSchema,
   getDecommissionLogsSchema,
 } from "./decommission.validation";
+import { sendSuccess } from "../../utils/response";
 
 const router = Router();
 
-// All routes require admin
-router.use(protect, authorize(UserRole.ADMIN, UserRole.DEVELOPER));
+// Middleware to return empty data for viewer role
+const restrictViewer = (emptyData: any) => (req: any, res: any, next: any) => {
+  if (req.user?.role === UserRole.VIEWER) {
+    return (sendSuccess as any)(res, emptyData, "Viewer Restricted Access");
+  }
+  next();
+};
 
-router.get(  
+router.use(protect);
+
+router.get(
   "/assigned",
+  restrictViewer({ meters: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
   validationMiddleware({ query: listAssignedMetersSchema }),
   getAssignedMeters
 );
 
 router.post(
   "/decommission",
+  authorize(UserRole.ADMIN, UserRole.DEVELOPER),
   validationMiddleware({ body: decommissionMeterSchema }),
   decommissionMeter
 );
 
 router.get(
   "/logs",
+  restrictViewer({ logs: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
   validationMiddleware({ query: getDecommissionLogsSchema }),
   getDecommissionLogs
 );
