@@ -224,15 +224,26 @@ export class EventService {
     const take = limit;
     const skip = (page - 1) * take;
 
-    // Calculate date range (default to today)
-    const targetDate = date || new Date().toISOString().split('T')[0];
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
+    // Calculate date range (Yerevan Time: UTC+4)
+    // Target: 02:00:00 (Yerevan) to Next Day 01:59:59 (Yerevan)
+    // UTC: Previous Day 22:00:00 to Current Day 21:59:59
 
-    const startTimestamp = Math.floor(startOfDay.getTime() / 1000);
-    const endTimestamp = Math.floor(endOfDay.getTime() / 1000);
+    const targetDateStr = date || new Date().toISOString().split('T')[0];
+
+    // Parse as UTC midnight
+    const baseDate = new Date(`${targetDateStr}T00:00:00Z`);
+
+    // Start Timestamp: Previous Day 22:00:00 UTC
+    const startDate = new Date(baseDate);
+    startDate.setUTCDate(startDate.getUTCDate() - 1);
+    startDate.setUTCHours(22, 0, 0, 0);
+
+    // End Timestamp: Current Day 21:59:59 UTC
+    const endDate = new Date(baseDate);
+    endDate.setUTCHours(21, 59, 59, 999);
+
+    const startTimestamp = Math.floor(startDate.getTime() / 1000);
+    const endTimestamp = Math.floor(endDate.getTime() / 1000);
 
     // Prepare dynamic conditions
     const conditions: string[] = [];
@@ -289,7 +300,7 @@ export class EventService {
         device_id: row.device_id,
         hhid: row.hhid,
         status: row.status,
-        date: targetDate,
+        date: targetDateStr,
       })),
       total
     };
