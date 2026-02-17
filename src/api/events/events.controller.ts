@@ -83,6 +83,7 @@ export const getViewership = async (req: Request, res: Response) => {
       device_id: req.query.device_id?.toString(),
       hhid: req.query.hhid?.toString(),
       date: req.query.date?.toString(),
+      status: req.query.status?.toString() as any,
       page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
     };
@@ -100,6 +101,7 @@ export const getConnectivityReport = async (req: Request, res: Response) => {
       device_id: req.query.device_id?.toString(),
       hhid: req.query.hhid?.toString(),
       date: req.query.date?.toString(),
+      status: req.query.status?.toString() as any,
       page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
     };
@@ -117,6 +119,7 @@ export const getButtonPressedReport = async (req: Request, res: Response) => {
       device_id: req.query.device_id?.toString(),
       hhid: req.query.hhid?.toString(),
       date: req.query.date?.toString(),
+      status: req.query.status?.toString() as any,
       page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
       limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
     };

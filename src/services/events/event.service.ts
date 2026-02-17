@@ -200,15 +200,15 @@ export class EventService {
 
 
   async getViewership(filters: ViewershipFilters = {}): Promise<PaginatedViewership> {
-    const { data, stats } = await this.getGeneralReport(filters, [29, 42]);
+    const { data, stats, filteredCount } = await this.getGeneralReport(filters, [29, 42]);
     return {
       data: data.map(v => ({ ...v, viewership: v.status })),
       stats,
       pagination: {
         page: filters.page || 1,
         limit: filters.limit || 25,
-        total: stats.total, // Total for the current filter context (filtered by status if applied)
-        pages: Math.ceil(stats.total / (filters.limit || 25)),
+        total: filteredCount, // Number of records matching all filters including status
+        pages: Math.ceil(filteredCount / (filters.limit || 25)),
       }
     };
   }
@@ -219,7 +219,7 @@ export class EventService {
   private async getGeneralReport(
     filters: ViewershipFilters,
     types?: number[]
-  ): Promise<{ data: any[]; stats: { active: number; total: number } }> {
+  ): Promise<{ data: any[]; stats: { active: number; total: number }; filteredCount: number }> {
     const { device_id, hhid, date, status, page = 1, limit = 25 } = filters;
 
     const take = limit;
@@ -259,8 +259,17 @@ export class EventService {
       conditions.push(`h.hhid ILIKE $${params.length}`);
     }
 
-    // Add pagination params
+    // Add status as parameter if provided
+    let statusFilter = '';
+    if (status && (status === 'Yes' || status === 'No')) {
+      params.push(status);
+      statusFilter = `WHERE ma.status = $${params.length}`;
+    }
+
+    // Add pagination params LAST
     params.push(take, skip);
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
 
     const typeCondition = types && types.length ? `AND e.type IN (${types.join(',')})` : '';
 
@@ -302,10 +311,10 @@ export class EventService {
         COUNT(*) OVER() as filtered_count
       FROM meter_activity ma
       CROSS JOIN global_stats gs
-      ${status ? `WHERE ma.status = '${status}'` : ''}
+      ${statusFilter}
       ORDER BY ma.device_id
-      LIMIT $${params.length - 1}
-      OFFSET $${params.length}
+      LIMIT $${limitIdx}
+      OFFSET $${offsetIdx}
     `;
 
     const results = await AppDataSource.query(query, params);
@@ -320,37 +329,9 @@ export class EventService {
 
     // Global stats (active/total) are for the dashboard badge.
 
-    const firstRow = results[0];
-    const totalPagination = results.length > 0 ? parseInt(firstRow.filtered_count) : 0;
-    const globalTotal = results.length > 0 ? parseInt(firstRow.total_records) : 0;
-    const globalActive = results.length > 0 ? parseInt(firstRow.total_active) : 0;
-
-    // If no results found, we might need to query stats separately if we want to show "0/100" instead of "0/0".
-    // But if no results found, it means either:
-    // 1. No meters exist (globalTotal = 0)
-    // 2. Filter matched nothing (e.g. status='Yes' but no active meters).
-    // In case 2, we still want global stats.
-
-    let stats = {
-      active: globalActive,
-      total: globalTotal
-    };
-
-    if (results.length === 0) {
-      // Fallback or separate query could be done here if strictly needed,
-      // but for now 0 is acceptable/safe or we can assume it's rare to paginate out of bounds.
-      // Actually, if we're on page 1 and get no results, stats will be 0.
-      // Let's do a quick separate stats query if results are empty but filters might be valid?
-      // Optimization: For now, if empty, return 0. The UI will handle "No data".
-
-      // BETTER: If results are empty, we lose the Cross Join values. 
-      // We should probably allow the window functions to handle it or run a count.
-      // Given complexity, let's stick to simple behavior: if no rows, stats are 0 (or we could run a lightweight query).
-      // Let's accept 0 for now to keep it simple and performant. 
-      // Wait, if I filter Status='Yes' and there are none, I still want to know Total Meters is 100.
-      // So I should probably separate the stats query or use a more robust SQL.
-      // Let's stick to the current plan; if user complains about 0 stats when empty, I'll fix.
-    }
+    const totalPagination = results.length > 0 ? parseInt(results[0].filtered_count) : 0;
+    const globalTotal = results.length > 0 ? parseInt(results[0].total_records) : 0;
+    const globalActive = results.length > 0 ? parseInt(results[0].total_active) : 0;
 
     return {
       data: results.map((row: any) => ({
@@ -360,36 +341,37 @@ export class EventService {
         date: targetDateStr,
       })),
       stats: {
-        active: stats.active,
-        total: totalPagination // Pagination needs the count of the CURRENT view (filtered)
-      }
+        active: globalActive,
+        total: globalTotal
+      },
+      filteredCount: totalPagination
     };
   }
 
   async getConnectivityReport(filters: ViewershipFilters = {}): Promise<PaginatedConnectivityReport> {
-    const { data, stats } = await this.getGeneralReport(filters);
+    const { data, stats, filteredCount } = await this.getGeneralReport(filters);
     return {
       data: data.map(v => ({ ...v, connectivity: v.status })),
       stats,
       pagination: {
         page: filters.page || 1,
         limit: filters.limit || 25,
-        total: stats.total,
-        pages: Math.ceil(stats.total / (filters.limit || 25)),
+        total: filteredCount,
+        pages: Math.ceil(filteredCount / (filters.limit || 25)),
       }
     };
   }
 
   async getButtonPressedReport(filters: ViewershipFilters = {}): Promise<PaginatedButtonPressedReport> {
-    const { data, stats } = await this.getGeneralReport(filters, [3]);
+    const { data, stats, filteredCount } = await this.getGeneralReport(filters, [3]);
     return {
       data: data.map(v => ({ ...v, button_pressed: v.status })),
       stats,
       pagination: {
         page: filters.page || 1,
         limit: filters.limit || 25,
-        total: stats.total,
-        pages: Math.ceil(stats.total / (filters.limit || 25)),
+        total: filteredCount,
+        pages: Math.ceil(filteredCount / (filters.limit || 25)),
       }
     };
   }
