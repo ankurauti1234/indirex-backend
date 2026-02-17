@@ -49,6 +49,7 @@ export interface ViewershipFilters {
   device_id?: string;
   hhid?: string;
   date?: string; // YYYY-MM-DD format
+  status?: "Yes" | "No";
   page?: number;
   limit?: number;
 }
@@ -62,6 +63,10 @@ export interface ViewershipItem {
 
 export interface PaginatedViewership {
   data: ViewershipItem[];
+  stats: {
+    active: number;
+    total: number;
+  };
   pagination: {
     page: number;
     limit: number;
@@ -80,6 +85,10 @@ export interface ConnectivityReportItem {
 
 export interface PaginatedConnectivityReport {
   data: ConnectivityReportItem[];
+  stats: {
+    active: number;
+    total: number;
+  };
   pagination: {
     page: number;
     limit: number;
@@ -98,6 +107,10 @@ export interface ButtonPressedReportItem {
 
 export interface PaginatedButtonPressedReport {
   data: ButtonPressedReportItem[];
+  stats: {
+    active: number;
+    total: number;
+  };
   pagination: {
     page: number;
     limit: number;

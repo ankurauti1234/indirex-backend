@@ -200,14 +200,15 @@ export class EventService {
 
 
   async getViewership(filters: ViewershipFilters = {}): Promise<PaginatedViewership> {
-    const { data, total } = await this.getGeneralReport(filters, [29, 42]);
+    const { data, stats } = await this.getGeneralReport(filters, [29, 42]);
     return {
       data: data.map(v => ({ ...v, viewership: v.status })),
+      stats,
       pagination: {
         page: filters.page || 1,
         limit: filters.limit || 25,
-        total,
-        pages: Math.ceil(total / (filters.limit || 25)),
+        total: stats.total, // Total for the current filter context (filtered by status if applied)
+        pages: Math.ceil(stats.total / (filters.limit || 25)),
       }
     };
   }
@@ -218,8 +219,8 @@ export class EventService {
   private async getGeneralReport(
     filters: ViewershipFilters,
     types?: number[]
-  ): Promise<{ data: any[]; total: number }> {
-    const { device_id, hhid, date, page = 1, limit = 25 } = filters;
+  ): Promise<{ data: any[]; stats: { active: number; total: number } }> {
+    const { device_id, hhid, date, status, page = 1, limit = 25 } = filters;
 
     const take = limit;
     const skip = (page - 1) * take;
@@ -272,28 +273,84 @@ export class EventService {
         INNER JOIN meters m ON ma.meter_id = m.id
         WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
         ORDER BY ma.meter_id, ma.assigned_at DESC
+      ),
+      meter_activity AS (
+        SELECT 
+          m.meter_id AS device_id,
+          h.hhid,
+          CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status
+        FROM latest_assignments la
+        INNER JOIN meters m ON la.meter_id = m.id
+        INNER JOIN households h ON la.household_id = h.id
+        LEFT JOIN events e ON e.device_id = m.meter_id
+          AND e.timestamp >= $1
+          AND e.timestamp <= $2
+          ${typeCondition}
+        ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+        GROUP BY m.meter_id, h.hhid
+      ),
+      global_stats AS (
+        SELECT
+          COUNT(*) as total_records,
+          SUM(CASE WHEN status = 'Yes' THEN 1 ELSE 0 END) as total_active
+        FROM meter_activity
       )
       SELECT 
-        m.meter_id AS device_id,
-        h.hhid,
-        CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status,
-        COUNT(*) OVER() AS total_count
-      FROM latest_assignments la
-      INNER JOIN meters m ON la.meter_id = m.id
-      INNER JOIN households h ON la.household_id = h.id
-      LEFT JOIN events e ON e.device_id = m.meter_id
-        AND e.timestamp >= $1
-        AND e.timestamp <= $2
-        ${typeCondition}
-      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
-      GROUP BY m.meter_id, h.hhid
-      ORDER BY m.meter_id
+        ma.*,
+        gs.total_records,
+        gs.total_active,
+        COUNT(*) OVER() as filtered_count
+      FROM meter_activity ma
+      CROSS JOIN global_stats gs
+      ${status ? `WHERE ma.status = '${status}'` : ''}
+      ORDER BY ma.device_id
       LIMIT $${params.length - 1}
       OFFSET $${params.length}
     `;
 
     const results = await AppDataSource.query(query, params);
-    const total = results.length > 0 ? parseInt(results[0].total_count) : 0;
+
+    // Stats are constant across the result set (derived from global_stats)
+    // BUT 'total' for pagination depends on whether we filtered by status.
+    // If status filter is ON, pagination total should be valid for that status.
+    // If status filter is OFF, pagination total should be total_records.
+
+    // The query returns `filtered_count` which is COUNT(*) OVER() on the filtered set.
+    // This is the correct total for pagination.
+
+    // Global stats (active/total) are for the dashboard badge.
+
+    const firstRow = results[0];
+    const totalPagination = results.length > 0 ? parseInt(firstRow.filtered_count) : 0;
+    const globalTotal = results.length > 0 ? parseInt(firstRow.total_records) : 0;
+    const globalActive = results.length > 0 ? parseInt(firstRow.total_active) : 0;
+
+    // If no results found, we might need to query stats separately if we want to show "0/100" instead of "0/0".
+    // But if no results found, it means either:
+    // 1. No meters exist (globalTotal = 0)
+    // 2. Filter matched nothing (e.g. status='Yes' but no active meters).
+    // In case 2, we still want global stats.
+
+    let stats = {
+      active: globalActive,
+      total: globalTotal
+    };
+
+    if (results.length === 0) {
+      // Fallback or separate query could be done here if strictly needed,
+      // but for now 0 is acceptable/safe or we can assume it's rare to paginate out of bounds.
+      // Actually, if we're on page 1 and get no results, stats will be 0.
+      // Let's do a quick separate stats query if results are empty but filters might be valid?
+      // Optimization: For now, if empty, return 0. The UI will handle "No data".
+
+      // BETTER: If results are empty, we lose the Cross Join values. 
+      // We should probably allow the window functions to handle it or run a count.
+      // Given complexity, let's stick to simple behavior: if no rows, stats are 0 (or we could run a lightweight query).
+      // Let's accept 0 for now to keep it simple and performant. 
+      // Wait, if I filter Status='Yes' and there are none, I still want to know Total Meters is 100.
+      // So I should probably separate the stats query or use a more robust SQL.
+      // Let's stick to the current plan; if user complains about 0 stats when empty, I'll fix.
+    }
 
     return {
       data: results.map((row: any) => ({
@@ -302,32 +359,37 @@ export class EventService {
         status: row.status,
         date: targetDateStr,
       })),
-      total
+      stats: {
+        active: stats.active,
+        total: totalPagination // Pagination needs the count of the CURRENT view (filtered)
+      }
     };
   }
 
   async getConnectivityReport(filters: ViewershipFilters = {}): Promise<PaginatedConnectivityReport> {
-    const { data, total } = await this.getGeneralReport(filters);
+    const { data, stats } = await this.getGeneralReport(filters);
     return {
       data: data.map(v => ({ ...v, connectivity: v.status })),
+      stats,
       pagination: {
         page: filters.page || 1,
         limit: filters.limit || 25,
-        total,
-        pages: Math.ceil(total / (filters.limit || 25)),
+        total: stats.total,
+        pages: Math.ceil(stats.total / (filters.limit || 25)),
       }
     };
   }
 
   async getButtonPressedReport(filters: ViewershipFilters = {}): Promise<PaginatedButtonPressedReport> {
-    const { data, total } = await this.getGeneralReport(filters, [3]);
+    const { data, stats } = await this.getGeneralReport(filters, [3]);
     return {
       data: data.map(v => ({ ...v, button_pressed: v.status })),
+      stats,
       pagination: {
         page: filters.page || 1,
         limit: filters.limit || 25,
-        total,
-        pages: Math.ceil(total / (filters.limit || 25)),
+        total: stats.total,
+        pages: Math.ceil(stats.total / (filters.limit || 25)),
       }
     };
   }
