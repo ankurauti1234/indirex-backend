@@ -11,10 +11,9 @@ class EventMappingService {
     }
     async getAll(filters = {}) {
         const queryBuilder = this.repo.createQueryBuilder("em");
-        // Updated search: look in both 'type' and 'name'
+        // Search in type, name, and description
         if (filters.search) {
             const search = filters.search.trim();
-            // If search is a number, also match on type
             const isNumeric = !isNaN(search) && !isNaN(parseInt(search));
             if (isNumeric) {
                 const typeValue = parseInt(search, 10);
@@ -24,14 +23,14 @@ class EventMappingService {
                 queryBuilder.andWhere("(em.name ILIKE :search OR em.description ILIKE :search)", { search: `%${search}%` });
             }
         }
-        if (filters.is_alert !== undefined) {
+        if (filters.is_alert !== undefined && filters.is_alert !== "") {
             queryBuilder.andWhere("em.is_alert = :is_alert", {
-                is_alert: filters.is_alert,
+                is_alert: filters.is_alert === "true" || filters.is_alert === true,
             });
         }
-        if (filters.enabled !== undefined) {
+        if (filters.enabled !== undefined && filters.enabled !== "") {
             queryBuilder.andWhere("em.enabled = :enabled", {
-                enabled: filters.enabled,
+                enabled: filters.enabled === "true" || filters.enabled === true,
             });
         }
         if (filters.severity) {
@@ -40,18 +39,20 @@ class EventMappingService {
             });
         }
         queryBuilder.orderBy("em.type", "ASC");
-        // Pagination logic
-        const page = parseInt(filters.page) || 1;
-        const limit = parseInt(filters.limit) || 25;
+        // Pagination
+        const page = parseInt(filters.page, 10) || 1;
+        const limit = parseInt(filters.limit, 10) || 25;
         const skip = (page - 1) * limit;
-        // Return all if no filters/pagination
-        if (!filters.search &&
-            filters.is_alert === undefined &&
-            filters.severity === undefined &&
-            filters.enabled === undefined &&
-            !filters.page &&
-            !filters.limit) {
-            return queryBuilder.getMany();
+        // If no filters or pagination requested, return just the array
+        const hasFiltersOrPagination = filters.search ||
+            filters.is_alert !== undefined ||
+            filters.severity ||
+            filters.enabled !== undefined ||
+            filters.page ||
+            filters.limit;
+        if (!hasFiltersOrPagination) {
+            const data = await queryBuilder.getMany();
+            return { data };
         }
         const [data, total] = await queryBuilder
             .skip(skip)

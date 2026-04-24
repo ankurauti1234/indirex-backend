@@ -118,3 +118,31 @@ export interface PaginatedButtonPressedReport {
     pages: number;
   };
 }
+
+// All Household Visualization (Assigned meters -> household -> members -> latest type 3)
+export interface HouseholdVisualizationFilters {
+  device_id?: string;
+  hhid?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface HouseholdVisualizationItem {
+  device_id: string;
+  hhid: string;
+  household_id: string;
+  total_members: number;
+  last_type3_timestamp: number | null;
+  last_type3_details: Record<string, any> | null;
+  active_users: number;
+}
+
+export interface PaginatedHouseholdVisualization {
+  data: HouseholdVisualizationItem[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}

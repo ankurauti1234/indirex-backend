@@ -10,10 +10,11 @@ const handlebars_1 = __importDefault(require("handlebars"));
 const promises_1 = require("fs/promises");
 const path_1 = __importDefault(require("path"));
 const env_1 = require("../config/env");
+console.log(`Initializing SMTP with host: ${env_1.env.smtp.host}, user: ${env_1.env.smtp.user}`);
 const transporter = nodemailer_1.default.createTransport({
     host: env_1.env.smtp.host,
     port: env_1.env.smtp.port,
-    secure: false,
+    secure: false, // true for 465, false for other ports
     auth: {
         user: env_1.env.smtp.user,
         pass: env_1.env.smtp.pass,
@@ -29,12 +30,18 @@ const sendAccountCreationEmail = async (to, name, tempPassword) => {
         tempPassword,
         appUrl: env_1.env.appUrl,
     });
-    await transporter.sendMail({
-        from: `"Meter Monitoring" <${env_1.env.smtp.from}>`,
-        to,
-        subject: "Your account has been created",
-        html,
-    });
+    try {
+        await transporter.sendMail({
+            from: `"Meter Monitoring" <${env_1.env.smtp.from}>`,
+            to,
+            subject: "Your account has been created",
+            html,
+        });
+    }
+    catch (error) {
+        console.error("Error sending account creation email:", error);
+        throw error;
+    }
 };
 exports.sendAccountCreationEmail = sendAccountCreationEmail;
 const sendNewPassword = async (to, tempPassword) => {
@@ -46,12 +53,18 @@ const sendNewPassword = async (to, tempPassword) => {
         tempPassword,
         appUrl: env_1.env.appUrl,
     });
-    await transporter.sendMail({
-        from: `"Meter Monitoring" <${env_1.env.smtp.from}>`,
-        to,
-        subject: "Your New Password",
-        html,
-    });
+    try {
+        await transporter.sendMail({
+            from: `"Meter Monitoring" <${env_1.env.smtp.from}>`,
+            to,
+            subject: "Your New Password",
+            html,
+        });
+    }
+    catch (error) {
+        console.error("Error sending new password email:", error);
+        throw error;
+    }
 };
 exports.sendNewPassword = sendNewPassword;
 //# sourceMappingURL=email.js.map

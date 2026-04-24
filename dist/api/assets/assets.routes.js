@@ -12,30 +12,38 @@ const User_1 = require("../../database/entities/User");
 const validation_middleware_1 = require("../../middleware/validation.middleware");
 const assets_validation_1 = require("./assets.validation");
 const joi_1 = __importDefault(require("joi"));
+const response_1 = require("../../utils/response");
 const router = (0, express_1.Router)();
-router.use(auth_middleware_1.protect, (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER));
+// Middleware to return empty data for viewer role
+const restrictViewer = (emptyData) => (req, res, next) => {
+    if (req.user?.role === User_1.UserRole.VIEWER) {
+        return response_1.sendSuccess(res, emptyData, "Viewer Restricted Access");
+    }
+    next();
+};
+router.use(auth_middleware_1.protect);
 // POST /assets/upload
-router.post("/upload", (0, validation_middleware_1.validationMiddleware)({ body: assets_validation_1.uploadSchema }), assets_controller_1.uploadMeters);
+router.post("/upload", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER), (0, validation_middleware_1.validationMiddleware)({ body: assets_validation_1.uploadSchema }), assets_controller_1.uploadMeters);
 // GET /assets/meters
-router.get("/meters", (0, validation_middleware_1.validationMiddleware)({ query: assets_validation_1.listMetersSchema }), assets_controller_1.getMeters);
+router.get("/meters", restrictViewer({ meters: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), (0, validation_middleware_1.validationMiddleware)({ query: assets_validation_1.listMetersSchema }), assets_controller_1.getMeters);
 // PUT /assets/meters/:meterId
-router.put("/meters/:meterId", (0, validation_middleware_1.validationMiddleware)({
+router.put("/meters/:meterId", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER), (0, validation_middleware_1.validationMiddleware)({
     params: joi_1.default.object({ meterId: joi_1.default.string().required() }),
     body: assets_validation_1.updateMeterSchema,
 }), assets_controller_1.updateMeter);
 // DELETE /assets/meters/:meterId
-router.delete("/meters/:meterId", (0, validation_middleware_1.validationMiddleware)({
+router.delete("/meters/:meterId", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER), (0, validation_middleware_1.validationMiddleware)({
     params: joi_1.default.object({ meterId: joi_1.default.string().required() }),
 }), assets_controller_1.deleteMeter);
 // GET /assets/groups
-router.get("/groups", (0, validation_middleware_1.validationMiddleware)({ query: assets_validation_1.groupsSchema }), assets_controller_1.getThingGroups);
+router.get("/groups", restrictViewer({ data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), (0, validation_middleware_1.validationMiddleware)({ query: assets_validation_1.groupsSchema }), assets_controller_1.getThingGroups);
 // GET /assets/groups/:groupName
-router.get("/groups/:groupName", (0, validation_middleware_1.validationMiddleware)({
+router.get("/groups/:groupName", restrictViewer({ data: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), (0, validation_middleware_1.validationMiddleware)({
     params: joi_1.default.object({ groupName: joi_1.default.string().required() }),
     query: assets_validation_1.groupThingsSchema,
 }), assets_controller_1.getThingsInGroup);
 // GET /assets/groups/:groupName/unregistered
-router.get("/groups/:groupName/unregistered", (0, validation_middleware_1.validationMiddleware)({
+router.get("/groups/:groupName/unregistered", restrictViewer([]), (0, validation_middleware_1.validationMiddleware)({
     params: joi_1.default.object({ groupName: joi_1.default.string().required() }),
 }), assets_controller_1.getUnregisteredInGroup);
 exports.default = router;

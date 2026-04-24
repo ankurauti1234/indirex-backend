@@ -9,6 +9,7 @@ import {
   getViewership,
   getConnectivityReport,
   getButtonPressedReport,
+  getHouseholdVisualization,
 } from "./events.controller";
 import eventMappingRouter from "./event-mapping.routes";
 import meterChannelsRouter from "./meter-channels.routes";
@@ -16,7 +17,8 @@ import { validationMiddleware } from "../../middleware/validation.middleware";
 import {
   eventsQuerySchema,
   liveMonitoringQuerySchema,
-  viewershipQuerySchema
+  viewershipQuerySchema,
+  householdVisualizationQuerySchema
 } from "./events.validation";
 import Joi from "joi";
 import { EventService } from "../../services/events/event.service"; // ← Static import
@@ -100,6 +102,13 @@ router.get(
   "/button-pressed-report",
   validationMiddleware({ query: viewershipQuerySchema }),
   getButtonPressedReport
+);
+
+router.get(
+  "/household-visualization",
+  validationMiddleware({ query: householdVisualizationQuerySchema }),
+  restrictViewer({ data: [], pagination: { page: 1, limit: 500, total: 0, pages: 0 } }),
+  getHouseholdVisualization
 );
 
 router.use("/meter-channels",

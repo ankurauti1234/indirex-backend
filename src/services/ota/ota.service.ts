@@ -9,8 +9,16 @@ import * as path from "path";
 import { env } from "../../config/env";
 import { ILike } from "typeorm"; 
 
-const s3 = new AWS.S3({ region: env.aws.region }); 
+const s3 = new AWS.S3({ region: env.aws.region });
 const iot = new AWS.Iot({ region: env.aws.region });
+
+interface JobDoc {
+  operation: string;
+  files: Array<{
+    name: string;
+    url: string;
+  }>;
+}
 
 export class OtaService {
   private repo = AppDataSource.getRepository(OtaJob);
@@ -55,7 +63,6 @@ export class OtaService {
   ) {
     const { version, bucketName, thingGroupName, thingNames, downloadPath } =
       payload;
-    if (!downloadPath?.trim()) throw new Error("downloadPath required");
 
     const targets: string[] = [];
     const region = env.aws.region;
@@ -91,10 +98,14 @@ export class OtaService {
       file.mimetype
     );
 
-    const jobDoc = {
-      operation: "download-file",
-      url: updateUrl,
-      path: downloadPath.trim(),
+    const jobDoc: JobDoc = {
+      operation: "download-files",
+      files: [
+        {
+          name: "update_bundle",
+          url: updateUrl,
+        },
+      ],
     };
 
     const jobS3Location = await this.uploadToS3(
@@ -116,7 +127,7 @@ export class OtaService {
       s3UrlUpdate: updateUrl,
       s3KeyJobDoc: jobKey,
       s3UrlJobDoc: jobS3Location,
-      downloadPath: downloadPath.trim(),
+      downloadPath: downloadPath?.trim(),
       targets,
       jobId: jobResult.jobId,
       jobArn: jobResult.jobArn,

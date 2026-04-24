@@ -11,7 +11,10 @@ import {
   ConnectivityReportItem,
   PaginatedConnectivityReport,
   ButtonPressedReportItem,
-  PaginatedButtonPressedReport
+  PaginatedButtonPressedReport,
+  HouseholdVisualizationFilters,
+  PaginatedHouseholdVisualization,
+  HouseholdVisualizationItem,
 } from "../../api/events/events.types";
 import { AppDataSource } from "../../database/connection";
 import { Event } from "../../database/entities/Event";
@@ -27,6 +30,58 @@ export class EventService {
     if (val === undefined || val === null || val === "") return undefined;
     const n = Number(val);
     return isNaN(n) ? undefined : n;
+  }
+
+  private computeActiveUsersFromType3Details(
+    details: any,
+    totalMembers: number
+  ): number {
+    if (!details || typeof details !== "object") return 0;
+
+    // Check for "members" array as provided in the user example
+    if (Array.isArray(details.members)) {
+      const activeCount = details.members.filter((m: any) => m.active === true).length;
+      return Math.max(0, Math.min(totalMembers || activeCount, activeCount));
+    }
+
+    // Common shapes we’ve seen across deployments.
+    const direct =
+      details.active_users ??
+      details.activeUsers ??
+      details.active_members ??
+      details.activeMembers ??
+      details.members_active ??
+      details.membersActive;
+
+    if (typeof direct === "number" && Number.isFinite(direct)) {
+      return Math.max(0, Math.min(totalMembers || direct, Math.floor(direct)));
+    }
+
+    // Sometimes it’s a list of member ids/codes
+    const list =
+      details.active_user_ids ??
+      details.activeUserIds ??
+      details.active_members_list ??
+      details.activeMembersList ??
+      details.active_members ??
+      details.activeMembers;
+
+    if (Array.isArray(list)) {
+      return Math.max(0, Math.min(totalMembers || list.length, list.length));
+    }
+
+    // Sometimes it’s a mapping like { M1: true, M2: false }
+    const boolLikeKeys = Object.entries(details).filter(([k, v]) => {
+      if (!/^m\d+$/i.test(k) && !/^member_?\d+$/i.test(k)) return false;
+      return typeof v === "boolean" || v === 0 || v === 1;
+    });
+    if (boolLikeKeys.length) {
+      const count = boolLikeKeys.reduce((acc, [, v]) => acc + (v === true || v === 1 ? 1 : 0), 0);
+      return Math.max(0, Math.min(totalMembers || count, count));
+    }
+
+    // Fallback: if the type 3 event exists, treat it as 1 active user.
+    return Math.max(0, Math.min(totalMembers || 1, 1));
   }
 
   async getEvents(filters: EventFilters = {}): Promise<PaginatedEvents> {
@@ -373,6 +428,121 @@ export class EventService {
         total: filteredCount,
         pages: Math.ceil(filteredCount / (filters.limit || 25)),
       }
+    };
+  }
+
+  async getHouseholdVisualization(
+    filters: HouseholdVisualizationFilters = {}
+  ): Promise<PaginatedHouseholdVisualization> {
+    const { device_id, hhid, page = 1, limit = 500 } = filters;
+
+    const take = limit;
+    const skip = (page - 1) * take;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (device_id) {
+      params.push(`%${device_id}%`);
+      conditions.push(`m.meter_id ILIKE $${params.length}`);
+    }
+    if (hhid) {
+      params.push(`%${hhid}%`);
+      conditions.push(`h.hhid ILIKE $${params.length}`);
+    }
+
+    params.push(take, skip);
+
+    // We use a wrapper CTE to allow filtering by computed active_users status
+    const query = `
+      WITH latest_assignments AS (
+        SELECT DISTINCT ON (ma.meter_id)
+          ma.meter_id,
+          ma.household_id
+        FROM meter_assignments ma
+        INNER JOIN meters m ON ma.meter_id = m.id
+        WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
+        ORDER BY ma.meter_id, ma.assigned_at DESC
+      ),
+      raw_data AS (
+        SELECT
+          m.meter_id AS device_id,
+          h.hhid AS hhid,
+          h.id AS household_id,
+          COALESCE(mem.total_members, 0) AS total_members,
+          t3.last_type3_timestamp AS last_type3_timestamp,
+          t3.last_type3_details AS last_type3_details
+        FROM latest_assignments la
+        INNER JOIN meters m ON la.meter_id = m.id
+        INNER JOIN households h ON la.household_id = h.id
+        LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS total_members
+          FROM members mm
+          WHERE mm.household_id = h.id
+        ) mem ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT
+            e.timestamp AS last_type3_timestamp,
+            e.details AS last_type3_details
+          FROM events e
+          WHERE e.device_id = m.meter_id AND e.type = 3
+          ORDER BY e.timestamp DESC
+          LIMIT 1
+        ) t3 ON TRUE
+        ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
+      ),
+      processed_data AS (
+        SELECT
+          *,
+          -- Note: This is a rough estimation in SQL, we'll refine in JS
+          -- But for filtering, we can check if members array exists and has active:true
+          CASE 
+            WHEN last_type3_details->'members' IS NOT NULL 
+            THEN (SELECT COUNT(*) FROM jsonb_array_elements(last_type3_details->'members') AS m WHERE m->>'active' = 'true')
+            ELSE 0
+          END AS active_users_count
+        FROM raw_data
+      )
+      SELECT
+        *,
+        COUNT(*) OVER() AS total_count
+      FROM processed_data
+      WHERE 1=1
+      ORDER BY device_id
+      LIMIT $${params.length - 1}
+      OFFSET $${params.length}
+    `;
+
+    const results = await AppDataSource.query(query, params);
+
+    const data: HouseholdVisualizationItem[] = results.map((row: any) => {
+      const totalMembers = Number(row.total_members) || 0;
+      const details = row.last_type3_details ?? null;
+      const active = this.computeActiveUsersFromType3Details(details, totalMembers);
+
+      return {
+        device_id: row.device_id,
+        hhid: row.hhid,
+        household_id: row.household_id,
+        total_members: totalMembers,
+        last_type3_timestamp: row.last_type3_timestamp
+          ? parseInt(row.last_type3_timestamp, 10)
+          : null,
+        last_type3_details: details,
+        active_users: active,
+      };
+    });
+
+    const total = results.length > 0 ? parseInt(results[0].total_count, 10) : 0;
+
+    return {
+      data,
+      pagination: {
+        page,
+        limit: take,
+        total,
+        pages: Math.ceil(total / take),
+      },
     };
   }
 }

@@ -74,8 +74,6 @@ class OtaService {
     }
     async createOtaJob(file, user, payload) {
         const { version, bucketName, thingGroupName, thingNames, downloadPath } = payload;
-        if (!downloadPath?.trim())
-            throw new Error("downloadPath required");
         const targets = [];
         const region = env_1.env.aws.region;
         const accountId = env_1.env.aws.accountId || "*";
@@ -99,9 +97,13 @@ class OtaService {
         const jobKey = `job-documents/${(0, uuid_1.v4)()}-job.json`;
         const updateUrl = await this.uploadToS3(bucketName, updateKey, fileBuffer, file.mimetype);
         const jobDoc = {
-            operation: "download-file",
-            url: updateUrl,
-            path: downloadPath.trim(),
+            operation: "download-files",
+            files: [
+                {
+                    name: "update_bundle",
+                    url: updateUrl,
+                },
+            ],
         };
         const jobS3Location = await this.uploadToS3(bucketName, jobKey, Buffer.from(JSON.stringify(jobDoc, null, 2)), "application/json");
         const jobResult = await this.createIotJob(`s3://${bucketName}/${jobKey}`, targets);
@@ -112,7 +114,7 @@ class OtaService {
             s3UrlUpdate: updateUrl,
             s3KeyJobDoc: jobKey,
             s3UrlJobDoc: jobS3Location,
-            downloadPath: downloadPath.trim(),
+            downloadPath: downloadPath?.trim(),
             targets,
             jobId: jobResult.jobId,
             jobArn: jobResult.jobArn,

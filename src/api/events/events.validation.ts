@@ -31,3 +31,10 @@ export const viewershipQuerySchema = Joi.object({
   page: Joi.number().min(1).default(1),
   limit: Joi.number().min(1).max(999999).default(25),
 });
+
+export const householdVisualizationQuerySchema = Joi.object({
+  device_id: Joi.string().optional(),
+  hhid: Joi.string().optional(),
+  page: Joi.number().min(1).default(1),
+  limit: Joi.number().min(1).max(999999).default(500),
+});

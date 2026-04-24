@@ -130,3 +130,23 @@ export const getButtonPressedReport = async (req: Request, res: Response) => {
     sendSuccess(res, { data: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error");
   }
 };
+
+export const getHouseholdVisualization = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      device_id: req.query.device_id?.toString(),
+      hhid: req.query.hhid?.toString(),
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 500,
+    };
+    const data = await service.getHouseholdVisualization(filters);
+    sendSuccess(res, data, "Household visualization data retrieved");
+  } catch (e: any) {
+    console.error("getHouseholdVisualization error:", e);
+    sendSuccess(
+      res,
+      { data: [], pagination: { page: 1, limit: 500, total: 0, pages: 0 } },
+      "Error retrieving household visualization data"
+    );
+  }
+};

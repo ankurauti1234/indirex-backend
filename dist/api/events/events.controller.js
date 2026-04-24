@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAlertsByDevice = exports.getAlerts = exports.getEventsByType = exports.getEvents = void 0;
+exports.getHouseholdVisualization = exports.getButtonPressedReport = exports.getConnectivityReport = exports.getViewership = exports.getLiveMonitoring = exports.getAlertsByDevice = exports.getAlerts = exports.getEventsByType = exports.getEvents = void 0;
 const response_1 = require("../../utils/response");
 const event_service_1 = require("../../services/events/event.service");
 const service = new event_service_1.EventService();
@@ -63,4 +63,95 @@ const getAlertsByDevice = async (req, res) => {
     }
 };
 exports.getAlertsByDevice = getAlertsByDevice;
+const getLiveMonitoring = async (req, res) => {
+    try {
+        const filters = {
+            device_id: req.query.device_id?.toString(),
+            hhid: req.query.hhid?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 25,
+        };
+        const data = await service.getLiveMonitoring(filters);
+        (0, response_1.sendSuccess)(res, data, "Live monitoring data retrieved");
+    }
+    catch (e) {
+        console.error("getLiveMonitoring error:", e);
+        (0, response_1.sendSuccess)(res, { data: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error retrieving live monitoring data");
+    }
+};
+exports.getLiveMonitoring = getLiveMonitoring;
+const getViewership = async (req, res) => {
+    try {
+        const filters = {
+            device_id: req.query.device_id?.toString(),
+            hhid: req.query.hhid?.toString(),
+            date: req.query.date?.toString(),
+            status: req.query.status?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 25,
+        };
+        const data = await service.getViewership(filters);
+        (0, response_1.sendSuccess)(res, data, "Viewership data retrieved");
+    }
+    catch (e) {
+        console.error("getViewership error:", e);
+        (0, response_1.sendSuccess)(res, { data: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error retrieving viewership data");
+    }
+};
+exports.getViewership = getViewership;
+const getConnectivityReport = async (req, res) => {
+    try {
+        const filters = {
+            device_id: req.query.device_id?.toString(),
+            hhid: req.query.hhid?.toString(),
+            date: req.query.date?.toString(),
+            status: req.query.status?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 25,
+        };
+        const data = await service.getConnectivityReport(filters);
+        (0, response_1.sendSuccess)(res, data, "Connectivity report retrieved");
+    }
+    catch (e) {
+        console.error("getConnectivityReport error:", e);
+        (0, response_1.sendSuccess)(res, { data: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error");
+    }
+};
+exports.getConnectivityReport = getConnectivityReport;
+const getButtonPressedReport = async (req, res) => {
+    try {
+        const filters = {
+            device_id: req.query.device_id?.toString(),
+            hhid: req.query.hhid?.toString(),
+            date: req.query.date?.toString(),
+            status: req.query.status?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 25,
+        };
+        const data = await service.getButtonPressedReport(filters);
+        (0, response_1.sendSuccess)(res, data, "Button pressed report retrieved");
+    }
+    catch (e) {
+        console.error("getButtonPressedReport error:", e);
+        (0, response_1.sendSuccess)(res, { data: [], pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error");
+    }
+};
+exports.getButtonPressedReport = getButtonPressedReport;
+const getHouseholdVisualization = async (req, res) => {
+    try {
+        const filters = {
+            device_id: req.query.device_id?.toString(),
+            hhid: req.query.hhid?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 500,
+        };
+        const data = await service.getHouseholdVisualization(filters);
+        (0, response_1.sendSuccess)(res, data, "Household visualization data retrieved");
+    }
+    catch (e) {
+        console.error("getHouseholdVisualization error:", e);
+        (0, response_1.sendSuccess)(res, { data: [], pagination: { page: 1, limit: 500, total: 0, pages: 0 } }, "Error retrieving household visualization data");
+    }
+};
+exports.getHouseholdVisualization = getHouseholdVisualization;
 //# sourceMappingURL=events.controller.js.map

@@ -5,9 +5,10 @@ const response_1 = require("../../utils/response");
 const event_mapping_service_1 = require("../../services/events/event-mapping.service");
 const service = new event_mapping_service_1.EventMappingService();
 const getEventMappings = async (req, res) => {
-    const filters = req.query; // Already validated and cleaned by middleware
-    const mappings = await service.getAll(filters);
-    (0, response_1.sendSuccess)(res, mappings, "Event mappings retrieved");
+    const filters = req.query;
+    const result = await service.getAll(filters);
+    // result is now { data: EventMapping[], pagination?: {...} }
+    (0, response_1.sendSuccess)(res, result.data, "Event mappings retrieved", 200, result.pagination);
 };
 exports.getEventMappings = getEventMappings;
 const getEventMapping = async (req, res) => {

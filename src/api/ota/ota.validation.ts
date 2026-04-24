@@ -8,7 +8,7 @@ export const createOtaJobSchema = Joi.object({
   bucketName: Joi.string().default(env.aws.defaultBucket),
   thingGroupName: Joi.string().optional(),
   thingNames: Joi.string().optional(),
-  downloadPath: Joi.string().min(1).required(),
+  downloadPath: Joi.string().min(1).optional(),
 }); 
 
 export const getMyJobsSchema = Joi.object({

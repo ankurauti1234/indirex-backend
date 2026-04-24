@@ -11,7 +11,7 @@ exports.createOtaJobSchema = joi_1.default.object({
     bucketName: joi_1.default.string().default(env_1.env.aws.defaultBucket),
     thingGroupName: joi_1.default.string().optional(),
     thingNames: joi_1.default.string().optional(),
-    downloadPath: joi_1.default.string().min(1).required(),
+    downloadPath: joi_1.default.string().min(1).optional(),
 });
 exports.getMyJobsSchema = joi_1.default.object({
     search: joi_1.default.string().optional(),
