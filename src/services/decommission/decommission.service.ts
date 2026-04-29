@@ -3,6 +3,7 @@ import { AppDataSource } from "../../database/connection";
 import { Meter } from "../../database/entities/Meter";
 import { Household } from "../../database/entities/Household";
 import { DecommissionLog } from "../../database/entities/DecommissionLog";
+import { MeterAssignment } from "../../database/entities/MeterAssignment";
 import { User } from "../../database/entities/User";
 import { publishDecommissionWithAck } from "../mqtt/mqtt.client";
 
@@ -29,6 +30,7 @@ export class DecommissionService {
   private meterRepo = AppDataSource.getRepository(Meter);
   private householdRepo = AppDataSource.getRepository(Household);
   private logRepo = AppDataSource.getRepository(DecommissionLog);
+  private assignmentRepo = AppDataSource.getRepository(MeterAssignment);
   private userRepo = AppDataSource.getRepository(User);
 
   async getAssignedMeters(params: GetAssignedMetersParams) {
@@ -103,6 +105,9 @@ export class DecommissionService {
     meter.isAssigned = false;
     meter.assignedHousehold = null;
     await this.meterRepo.save(meter);
+
+    // ALSO DELETE FROM METER_ASSIGNMENTS (To fix household status issue)
+    await this.assignmentRepo.delete({ meter: { id: meter.id } });
 
     const log = this.logRepo.create({
       meter,
