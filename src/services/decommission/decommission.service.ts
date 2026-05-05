@@ -5,6 +5,7 @@ import { Household } from "../../database/entities/Household";
 import { DecommissionLog } from "../../database/entities/DecommissionLog";
 import { MeterAssignment } from "../../database/entities/MeterAssignment";
 import { User } from "../../database/entities/User";
+import { HouseholdMeterHistory } from "../../database/entities/HouseholdMeterHistory";
 import { publishDecommissionWithAck } from "../mqtt/mqtt.client";
 
 interface GetAssignedMetersParams {
@@ -32,6 +33,7 @@ export class DecommissionService {
   private logRepo = AppDataSource.getRepository(DecommissionLog);
   private assignmentRepo = AppDataSource.getRepository(MeterAssignment);
   private userRepo = AppDataSource.getRepository(User);
+  private historyRepo = AppDataSource.getRepository(HouseholdMeterHistory);
 
   async getAssignedMeters(params: GetAssignedMetersParams) {
     // ... (unchanged - keep your existing logic)
@@ -106,8 +108,23 @@ export class DecommissionService {
     meter.assignedHousehold = null;
     await this.meterRepo.save(meter);
 
+    // Capture assignedAt from the assignment before deleting it
+    const assignment = await this.assignmentRepo.findOne({
+      where: { meter: { id: meter.id } },
+    });
+
     // ALSO DELETE FROM METER_ASSIGNMENTS (To fix household status issue)
     await this.assignmentRepo.delete({ meter: { id: meter.id } });
+
+    // Write to household_meter_history: assignedAt from assignment, decommissionedAt = now
+    const decommissionedAt = new Date();
+    const historyRecord = this.historyRepo.create({
+      meter,
+      household,
+      assignedAt: assignment?.assignedAt ?? meter.updatedAt,
+      decommissionedAt,
+    });
+    await this.historyRepo.save(historyRecord);
 
     const log = this.logRepo.create({
       meter,
@@ -178,6 +195,59 @@ export class DecommissionService {
         limit,
         totalPages: Math.ceil(total / limit),
       },
+    };
+  }
+
+  async getHouseholdMeterHistory(params: {
+    page: number;
+    limit: number;
+    meterId?: string;
+    hhid?: string;
+    assigned_from?: Date;
+    assigned_to?: Date;
+    decommissioned_from?: Date;
+    decommissioned_to?: Date;
+  }) {
+    const { page, limit, meterId, hhid, assigned_from, assigned_to, decommissioned_from, decommissioned_to } = params;
+
+    const qb = this.historyRepo
+      .createQueryBuilder("h")
+      .leftJoinAndSelect("h.meter", "meter")
+      .leftJoinAndSelect("h.household", "household");
+
+    if (meterId) {
+      qb.andWhere("meter.meterId ILIKE :meterId", { meterId: `%${meterId}%` });
+    }
+    if (hhid) {
+      qb.andWhere("household.hhid ILIKE :hhid", { hhid: `%${hhid}%` });
+    }
+    if (assigned_from) {
+      qb.andWhere("h.assignedAt >= :assigned_from", { assigned_from });
+    }
+    if (assigned_to) {
+      qb.andWhere("h.assignedAt <= :assigned_to", { assigned_to });
+    }
+    if (decommissioned_from) {
+      qb.andWhere("h.decommissionedAt >= :decommissioned_from", { decommissioned_from });
+    }
+    if (decommissioned_to) {
+      qb.andWhere("h.decommissionedAt <= :decommissioned_to", { decommissioned_to });
+    }
+
+    qb.orderBy("h.decommissionedAt", "DESC");
+
+    const total = await qb.getCount();
+    const rows = await qb.skip((page - 1) * limit).take(limit).getMany();
+
+    return {
+      data: rows.map((r) => ({
+        id: r.id,
+        meterId: r.meter.meterId,
+        hhid: r.household.hhid,
+        assignedAt: r.assignedAt,
+        decommissionedAt: r.decommissionedAt ?? null,
+      })),
+      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 }
