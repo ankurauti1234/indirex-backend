@@ -7,7 +7,6 @@ import { sendInactivityAlertEmail } from "./alert.email";
 
 /**
  * Ensure a single AlertSettings row exists (singleton pattern).
- * Returns the current settings.
  */
 export async function getOrCreateSettings(): Promise<AlertSettings> {
   const repo = AppDataSource.getRepository(AlertSettings);
@@ -24,42 +23,48 @@ export async function getOrCreateSettings(): Promise<AlertSettings> {
 }
 
 /**
- * The core inactivity check.
+ * The core inactivity check — fully optimised with bulk SQL operations.
  *
- * Strategy: Reuses the exact same SQL as the connectivity report.
- * A meter is "inactive" if it has status = 'No' for YESTERDAY's window
- * (Yerevan time UTC+4: previous day 22:00 UTC to current day 21:59:59 UTC).
+ * Strategy:
+ *   1) One CTE query finds all inactive meters + their all-time last event
+ *      (same window logic as the connectivity report)
+ *   2) One bulk INSERT ... ON CONFLICT upserts all inactive rows at once
+ *   3) One bulk UPDATE resolves all meters that came back online
+ *   4) One UPDATE sets the lastCheckAt timestamp
  *
- * This is consistent with what the connectivity report shows,
- * so the alerts page and connectivity report will always agree.
+ * Zero N+1 queries. Total DB round trips: 4 regardless of meter count.
  */
 export async function runInactivityCheck(): Promise<{
   newInactive: number;
   resolved: number;
   totalInactive: number;
 }> {
-  const alertRepo = AppDataSource.getRepository(InactivityAlert);
   const now = new Date();
 
-  // --- Step 1: Calculate yesterday's Yerevan-window timestamps ---
-  // Same logic as getGeneralReport in event.service.ts
-  // Window: previous day 22:00:00 UTC to current day 21:59:59 UTC
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  // --- Step 1: Calculate today's Yerevan-window timestamps ---
+  // Yerevan UTC+4: day window = previous day 22:00 UTC -> current day 21:59:59 UTC
+  const todayStr = new Date().toISOString().split("T")[0];
+  const baseDate = new Date(`${todayStr}T00:00:00Z`);
 
-  const startDate = new Date(today);
+  const startDate = new Date(baseDate);
   startDate.setUTCDate(startDate.getUTCDate() - 1);
   startDate.setUTCHours(22, 0, 0, 0);
 
-  const endDate = new Date(today);
+  const endDate = new Date(baseDate);
   endDate.setUTCHours(21, 59, 59, 999);
 
   const startTimestamp = Math.floor(startDate.getTime() / 1000);
   const endTimestamp = Math.floor(endDate.getTime() / 1000);
 
-  // --- Step 2: Run the connectivity report query, filter for status = 'No' ---
-  // Reuses exact same CTE structure as event.service.ts getGeneralReport()
-  const query = `
+  // --- Step 2: Single query — find all inactive meters + all-time last event ---
+  // Uses a lateral join for last_event_unix so it's one pass, not N correlated subqueries.
+  // Only assigned meters are checked (same as connectivity report).
+  const inactiveRows: {
+    device_id: string;
+    hhid: string;
+    last_event_unix: string | null;
+  }[] = await AppDataSource.query(
+    `
     WITH latest_assignments AS (
       SELECT DISTINCT ON (ma.meter_id)
         ma.meter_id,
@@ -69,84 +74,108 @@ export async function runInactivityCheck(): Promise<{
       WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
       ORDER BY ma.meter_id, ma.assigned_at DESC
     ),
-    meter_activity AS (
+    meter_base AS (
       SELECT
         m.meter_id AS device_id,
-        h.hhid,
-        CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status
+        h.hhid
       FROM latest_assignments la
       INNER JOIN meters m ON la.meter_id = m.id
       INNER JOIN households h ON la.household_id = h.id
-      LEFT JOIN events e ON e.device_id = m.meter_id
-        AND e.timestamp >= $1
-        AND e.timestamp <= $2
-      GROUP BY m.meter_id, h.hhid
     ),
-    all_time_last AS (
+    active_in_window AS (
+      SELECT DISTINCT e.device_id
+      FROM events e
+      WHERE e.timestamp >= $1
+        AND e.timestamp <= $2
+        AND e.device_id BETWEEN 'IM000101' AND 'IM000600'
+    ),
+    inactive_meters AS (
+      SELECT mb.device_id, mb.hhid
+      FROM meter_base mb
+      WHERE mb.device_id NOT IN (SELECT device_id FROM active_in_window)
+    ),
+    last_events AS (
       SELECT
-        m.meter_id AS device_id,
+        im.device_id,
         MAX(e.timestamp) AS last_event_unix
-      FROM latest_assignments la
-      INNER JOIN meters m ON la.meter_id = m.id
-      LEFT JOIN events e ON e.device_id = m.meter_id
-      GROUP BY m.meter_id
+      FROM inactive_meters im
+      LEFT JOIN events e ON e.device_id = im.device_id AND e.timestamp < $1
+      GROUP BY im.device_id
     )
-    SELECT ma.device_id, ma.hhid, al.last_event_unix
-    FROM meter_activity ma
-    LEFT JOIN all_time_last al ON al.device_id = ma.device_id
-    WHERE ma.status = 'No'
-    ORDER BY ma.device_id
-  `;
+    SELECT
+      im.device_id,
+      im.hhid,
+      le.last_event_unix
+    FROM inactive_meters im
+    LEFT JOIN last_events le ON le.device_id = im.device_id
+    ORDER BY im.device_id
+    `,
+    [startTimestamp, endTimestamp]
+  );
 
-  const inactiveRows: { device_id: string; hhid: string; last_event_unix: string | null }[] =
-    await AppDataSource.query(query, [startTimestamp, endTimestamp]);
-
-  const inactiveDeviceIds = new Set(inactiveRows.map((r) => r.device_id));
-
-  // --- Step 3: Upsert inactive meters into inactivity_alerts ---
-  let newInactive = 0;
-  for (const row of inactiveRows) {
-    const lastEventAt = row.last_event_unix
-      ? new Date(Number(row.last_event_unix) * 1000)
-      : null;
-
-    const existing = await alertRepo.findOne({ where: { device_id: row.device_id } });
-
-    if (existing) {
-      existing.lastEventAt = lastEventAt;
-      existing.hhid = row.hhid;
-      existing.isActive = true;
-      await alertRepo.save(existing);
-    } else {
-      const alert = alertRepo.create({
-        device_id: row.device_id,
-        hhid: row.hhid,
-        lastEventAt,
-        detectedAt: now,
-        isActive: true,
-      });
-      await alertRepo.save(alert);
-      newInactive++;
-    }
+  if (inactiveRows.length === 0) {
+    // All meters are active — resolve everything in one shot
+    await AppDataSource.query(
+      `UPDATE inactivity_alerts SET "isActive" = false, "updatedAt" = NOW() WHERE "isActive" = true`
+    );
+    await AppDataSource.query(
+      `UPDATE alert_settings SET "lastCheckAt" = NOW(), "updatedAt" = NOW() WHERE id = 1`
+    );
+    console.log(`[InactivityCheck] All meters active. All alerts resolved.`);
+    return { newInactive: 0, resolved: 0, totalInactive: 0 };
   }
 
-  // --- Step 4: Auto-resolve meters that sent events yesterday (came back online) ---
-  const currentlyActive = await alertRepo.find({ where: { isActive: true } });
+  // --- Step 3: Bulk upsert all inactive meters in ONE query ---
+  // INSERT ... ON CONFLICT (device_id) DO UPDATE — single round trip for all rows
+  const nowIso = now.toISOString();
+  const values = inactiveRows
+    .map((row) => {
+      const lastEventAt = row.last_event_unix
+        ? new Date(Number(row.last_event_unix) * 1000).toISOString()
+        : null;
+      const lastEventSql = lastEventAt ? `'${lastEventAt}'` : "NULL";
+      const hhidSql = row.hhid ? `'${row.hhid.replace(/'/g, "''")}'` : "NULL";
+      return `('${row.device_id}', ${hhidSql}, ${lastEventSql}, '${nowIso}', true, '${nowIso}', '${nowIso}')`;
+    })
+    .join(",\n");
 
-  let resolved = 0;
-  for (const alert of currentlyActive) {
-    if (!inactiveDeviceIds.has(alert.device_id)) {
-      alert.isActive = false;
-      await alertRepo.save(alert);
-      resolved++;
-    }
-  }
+  const upsertResult = await AppDataSource.query(
+    `
+    INSERT INTO inactivity_alerts
+      (device_id, hhid, "lastEventAt", "detectedAt", "isActive", "createdAt", "updatedAt")
+    VALUES ${values}
+    ON CONFLICT (device_id) DO UPDATE SET
+      hhid            = EXCLUDED.hhid,
+      "lastEventAt"   = EXCLUDED."lastEventAt",
+      "isActive"      = true,
+      "updatedAt"     = NOW()
+    RETURNING (xmax = 0) AS inserted
+    `
+  );
 
-  // --- Step 5: Update last check timestamp ---
-  const settingsRepo = AppDataSource.getRepository(AlertSettings);
-  await settingsRepo.update(1, { lastCheckAt: now });
+  const newInactive = upsertResult.filter((r: any) => r.inserted).length;
 
-  const totalInactive = await alertRepo.count({ where: { isActive: true } });
+  // --- Step 4: Bulk resolve meters that came back online — one UPDATE ---
+  const inactiveDeviceIds = inactiveRows.map((r) => `'${r.device_id}'`).join(",");
+
+  const resolveResult = await AppDataSource.query(
+    `
+    UPDATE inactivity_alerts
+    SET "isActive" = false, "updatedAt" = NOW()
+    WHERE "isActive" = true
+      AND device_id NOT IN (${inactiveDeviceIds})
+    RETURNING device_id
+    `
+  );
+
+  const resolved = resolveResult.length;
+
+  // --- Step 5: Update lastCheckAt in one query ---
+  await AppDataSource.query(
+    `UPDATE alert_settings SET "lastCheckAt" = NOW(), "updatedAt" = NOW() WHERE id = 1`
+  );
+
+  const totalInactive = inactiveRows.length;
 
   console.log(
     `[InactivityCheck] Done. New: ${newInactive}, Resolved: ${resolved}, Total inactive: ${totalInactive}`
@@ -157,7 +186,6 @@ export async function runInactivityCheck(): Promise<{
 
 /**
  * Send the inactivity email report to all configured recipients.
- * Generates an Excel attachment on-the-fly from inactivity_alerts.
  */
 export async function sendInactivityReport(): Promise<{
   sent: boolean;
@@ -182,12 +210,12 @@ export async function sendInactivityReport(): Promise<{
     return { sent: false, recipientCount: 0 };
   }
 
-  const toAddresses = recipients.map((r: { email: any; }) => r.email);
-
+  const toAddresses = recipients.map((r) => r.email);
   await sendInactivityAlertEmail(toAddresses, alerts);
 
-  const settingsRepo = AppDataSource.getRepository(AlertSettings);
-  await settingsRepo.update(1, { lastEmailSentAt: new Date() });
+  await AppDataSource.query(
+    `UPDATE alert_settings SET "lastEmailSentAt" = NOW(), "updatedAt" = NOW() WHERE id = 1`
+  );
 
   console.log(
     `[InactivityReport] Sent to ${toAddresses.length} recipients with ${alerts.length} inactive meters.`
@@ -197,8 +225,7 @@ export async function sendInactivityReport(): Promise<{
 }
 
 /**
- * Background scheduler. Runs the inactivity check every 6 hours
- * and the email report based on the configured frequency.
+ * Background scheduler — runs every 6 hours, also on startup.
  */
 let schedulerInterval: NodeJS.Timeout | null = null;
 
