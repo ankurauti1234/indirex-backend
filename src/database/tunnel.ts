@@ -17,7 +17,7 @@ export async function createDbTunnel(): Promise<void> {
 
   const tunnelOptions = {
     autoClose: false, // Keep tunnel open even if no active connections (best for app servers)
-    reconnectOnError: false, // Automatically reconnect if the tunnel connection is lost
+    reconnectOnError: true, // Automatically reconnect if the tunnel connection is lost
   };
 
 const serverOptions = {
@@ -26,7 +26,7 @@ const serverOptions = {
 
 const forwardOptions = {
   srcAddr: "127.0.0.1",      // Bind source only to localhost (security)
-  // srcPort: DO NOT SET – let it use serverOptions.port automatically
+  srcPort: env.ssh.localPort,
   dstAddr: env.postgres.host,  // RDS endpoint (as seen from bastion)
   dstPort: env.postgres.port,  // Usually 5432
 };
@@ -60,10 +60,12 @@ const forwardOptions = {
 
     console.log(`SSH tunnel established on local port ${env.ssh.localPort}`);
 
-    // Cleanup on process termination
-    process.on("SIGINT", closeTunnel);
-    process.on("SIGTERM", closeTunnel);
-    process.on("exit", closeTunnel);
+    // ONLY close on proper shutdown signals — NOT on "exit"
+    process.on("SIGINT", closeTunnel); // Ctrl+C
+    process.on("SIGTERM", closeTunnel); // kill, docker stop, etc.
+
+    // REMOVE this line completely:
+    // process.on("exit", closeTunnel);
   } catch (error: any) {
     console.error("Failed to create SSH tunnel:", error.message);
     throw error;
