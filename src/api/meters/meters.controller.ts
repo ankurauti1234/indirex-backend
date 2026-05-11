@@ -50,6 +50,8 @@ export const getInstalledMeters = async (req: Request, res: Response) => {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
     const search = (req.query.search as string) || "";
+    const dateFrom = (req.query.dateFrom as string) || "";
+    const dateTo = (req.query.dateTo as string) || "";
     const skip = (page - 1) * limit;
 
     const qb = meterRepo
@@ -63,6 +65,18 @@ export const getInstalledMeters = async (req: Request, res: Response) => {
         "(meter.meterId ILIKE :search OR household.hhid ILIKE :search)",
         { search: `%${search}%` }
       );
+    }
+
+    if (dateFrom) {
+      qb.andWhere("meter.updatedAt >= :dateFrom", {
+        dateFrom: new Date(dateFrom + "T00:00:00.000Z"),
+      });
+    }
+
+    if (dateTo) {
+      qb.andWhere("meter.updatedAt <= :dateTo", {
+        dateTo: new Date(dateTo + "T23:59:59.999Z"),
+      });
     }
 
     const [meters, total] = await qb
