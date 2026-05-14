@@ -38,3 +38,12 @@ export const householdVisualizationQuerySchema = Joi.object({
   page: Joi.number().min(1).default(1),
   limit: Joi.number().min(1).max(999999).default(500),
 });
+
+export const weeklyConnectivityQuerySchema = Joi.object({
+  device_id: Joi.string().optional(),
+  hhid: Joi.string().optional(),
+  week_start: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(), // YYYY-MM-DD
+  status: Joi.string().valid("connected", "disconnected", "partial").optional(),
+  page: Joi.number().min(1).default(1),
+  limit: Joi.number().min(1).max(999999).default(25),
+});
