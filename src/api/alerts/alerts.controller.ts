@@ -32,6 +32,7 @@ export const listInactiveMeters = async (req: Request, res: Response) => {
       page: value.page,
       limit: value.limit,
       device_id: value.device_id || undefined,
+      inactivity_filter: value.inactivity_filter || undefined,
     });
 
     return sendSuccess(res, result.data, "Inactive meters fetched", 200, result.pagination);

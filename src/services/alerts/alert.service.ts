@@ -7,10 +7,13 @@ import { getOrCreateSettings } from "./alert.engine";
 
 // ─── Inactive Meters ─────────────────────────────────────────────
 
+// inactivity_filter values: "lt_3d" | "lt_1w" | "lt_2w" | "lt_1m" | "gt_1m"
+// These filter by how long ago lastEventAt was (inactivity duration)
 export async function getInactiveMeters(options: {
   page: number;
   limit: number;
   device_id?: string;
+  inactivity_filter?: string;
 }): Promise<{
   data: InactivityAlert[];
   pagination: { page: number; limit: number; total: number; totalPages: number };
@@ -26,7 +29,48 @@ export async function getInactiveMeters(options: {
     });
   }
 
-  qb.orderBy("a.device_id", "ASC");
+  // Inactivity duration filter — based on how long ago lastEventAt was
+  if (options.inactivity_filter) {
+    const now = new Date();
+    const cutoffs: Record<string, Date> = {
+      lt_3d: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000),
+      lt_1w: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+      lt_2w: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000),
+      lt_1m: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+    };
+
+    if (options.inactivity_filter === "lt_3d") {
+      // Inactive for less than 3 days: lastEventAt is between 3 days ago and now
+      qb.andWhere("a.lastEventAt >= :cutoff", { cutoff: cutoffs.lt_3d });
+    } else if (options.inactivity_filter === "lt_1w") {
+      // Inactive between 3 days and 1 week
+      qb.andWhere("a.lastEventAt >= :cutoff AND a.lastEventAt < :prev", {
+        cutoff: cutoffs.lt_1w,
+        prev: cutoffs.lt_3d,
+      });
+    } else if (options.inactivity_filter === "lt_2w") {
+      // Inactive between 1 week and 2 weeks
+      qb.andWhere("a.lastEventAt >= :cutoff AND a.lastEventAt < :prev", {
+        cutoff: cutoffs.lt_2w,
+        prev: cutoffs.lt_1w,
+      });
+    } else if (options.inactivity_filter === "lt_1m") {
+      // Inactive between 2 weeks and 1 month
+      qb.andWhere("a.lastEventAt >= :cutoff AND a.lastEventAt < :prev", {
+        cutoff: cutoffs.lt_1m,
+        prev: cutoffs.lt_2w,
+      });
+    } else if (options.inactivity_filter === "gt_1m") {
+      // Inactive for more than 1 month (or never seen)
+      qb.andWhere("(a.lastEventAt < :cutoff OR a.lastEventAt IS NULL)", {
+        cutoff: cutoffs.lt_1m,
+      });
+    }
+  }
+
+  // Sort by inactivity ascending = most recently inactive first (lastEventAt DESC)
+  // Null lastEventAt (never seen) goes to the bottom
+  qb.orderBy("a.lastEventAt", "DESC", "NULLS LAST");
 
   const total = await qb.getCount();
   const data = await qb

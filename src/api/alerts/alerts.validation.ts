@@ -15,4 +15,7 @@ export const paginationSchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(200).default(25),
   device_id: Joi.string().optional().allow(""),
+  inactivity_filter: Joi.string()
+    .valid("lt_3d", "lt_1w", "lt_2w", "lt_1m", "gt_1m")
+    .optional(),
 });
