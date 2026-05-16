@@ -159,3 +159,22 @@ export const getMemberwiseUnbridge = async (req: Request, res: Response) => {
     sendError(res, e.message || "Failed to generate memberwise unbridge report", 400);
   }
 };
+
+export const getViewershipCSVReports = async (req: Request, res: Response) => {
+  try {
+    const data = await service.getViewershipCSVReports({
+      date_label: req.query.date_label?.toString(),
+      month: req.query.month?.toString(),
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 31,
+    });
+    return sendSuccess(res, data.reports, "Viewership CSV reports fetched", 200, {
+      page: data.pagination.page,
+      limit: data.pagination.limit,
+      total: data.pagination.total,
+      totalPages: data.pagination.pages,
+    });
+  } catch (e: any) {
+    return sendError(res, e.message || "Failed to fetch viewership CSV reports", 500);
+  }
+};

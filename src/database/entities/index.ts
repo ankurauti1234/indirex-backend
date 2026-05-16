@@ -20,3 +20,4 @@ export * from "./GeneratedHHMemberwiseUnbridgedReport";
 export * from "./InactivityAlert";
 export * from "./AlertEmailRecipient";
 export * from "./AlertSettings";
+export * from "./LogoDailyViewershipCSV";

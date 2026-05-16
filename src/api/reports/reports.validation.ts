@@ -8,4 +8,11 @@ export const reportQuerySchema = Joi.object({
   page: Joi.number().min(1).default(1),
   limit: Joi.number().min(1).max(100).default(10),
   format: Joi.string().valid("json", "csv", "xlsx", "xml").default("json"),
-}); 
+});
+
+export const viewershipCSVQuerySchema = Joi.object({
+  date_label: Joi.string().pattern(/^\d{2}-\d{2}-\d{4}$/).optional(), // DD-MM-YYYY
+  month: Joi.string().pattern(/^\d{2}-\d{4}$/).optional(),             // MM-YYYY
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(31),
+});

@@ -9,6 +9,7 @@ import { In } from "typeorm";
 import * as csvWriter from "fast-csv";
 import * as XLSX from "xlsx";
 import { XMLBuilder } from "fast-xml-parser";
+import { LogoDailyViewershipCSV } from "../../database/entities/LogoDailyViewershipCSV";
 
 export interface ReportFilters {
   type?: string | number | number[];
@@ -603,5 +604,44 @@ export class ReportsService {
       default:
         throw new Error("Unsupported format");
     }
+  }
+
+  // ─── Viewership CSV Reports ───────────────────────────────────────────────────
+
+  async getViewershipCSVReports(filters: {
+    date_label?: string; // "DD-MM-YYYY" exact match
+    month?: string;      // "MM-YYYY" — filter all entries in that month
+    page?: number;
+    limit?: number;
+  }): Promise<{
+    reports: LogoDailyViewershipCSV[];
+    pagination: {
+      pages: number; page: number; limit: number; total: number; totalPages: number 
+};
+  }> {
+    const { date_label, month, page = 1, limit = 31 } = filters;
+    const repo = AppDataSource.getRepository(LogoDailyViewershipCSV);
+    const qb = repo.createQueryBuilder("v");
+
+    if (date_label) {
+      qb.andWhere("v.date_label = :date_label", { date_label });
+    }
+    // month is "MM-YYYY"; date_label format is "DD-MM-YYYY", so match the suffix
+    if (month) {
+      qb.andWhere("v.date_label LIKE :month", { month: `%-${month}` });
+    }
+
+    qb.orderBy("v.createdAt", "DESC");
+
+    const total = await qb.getCount();
+    const reports = await qb.skip((page - 1) * limit).take(limit).getMany();
+
+    return {
+      reports,
+      pagination: {
+        page, limit, total, totalPages: Math.ceil(total / limit),
+        pages: 0
+      },
+    };
   }
 }
