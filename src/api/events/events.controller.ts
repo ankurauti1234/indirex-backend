@@ -150,3 +150,25 @@ export const getHouseholdVisualization = async (req: Request, res: Response) => 
     );
   }
 };
+
+export const getWeeklyConnectivityReport = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      device_id: req.query.device_id?.toString(),
+      hhid: req.query.hhid?.toString(),
+      week_start: req.query.week_start?.toString(),
+      status: req.query.status?.toString() as any,
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
+    };
+    const data = await service.getWeeklyConnectivityReport(filters);
+    sendSuccess(res, data, "Weekly connectivity report retrieved");
+  } catch (e: any) {
+    console.error("getWeeklyConnectivityReport error:", e);
+    sendSuccess(
+      res,
+      { data: [], stats: { total_meters: 0, fully_connected: 0, partially_connected: 0, not_connected: 0, avg_connectivity_rate: 0 }, pagination: { page: 1, limit: 25, total: 0, pages: 0 } },
+      "Error retrieving weekly connectivity report"
+    );
+  }
+};

@@ -7,6 +7,10 @@ import reportsRouter from "./reports";
 import assetsRouter from "./assets";
 import householdRouter from "./household";
 import decommissionRouter from "./decommission";
+import metersRouter from "./meters";
+import dashboardRouter from "./dashboard";
+import alertsRouter from "./alerts";
+
 
 const router = Router();
 
@@ -18,5 +22,11 @@ router.use("/reports", reportsRouter);
 router.use("/assets", assetsRouter);
 router.use("/households", householdRouter);
 router.use("/decommission", decommissionRouter);
+
+router.use("/meters", metersRouter);
+
+router.use("/dashboard", dashboardRouter);
+
+router.use("/alerts", alertsRouter);
 
 export default router;
