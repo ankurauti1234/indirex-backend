@@ -21,5 +21,6 @@ router.use(auth_middleware_1.protect);
 router.get("/assigned", restrictViewer({ meters: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), (0, validation_middleware_1.validationMiddleware)({ query: decommission_validation_1.listAssignedMetersSchema }), decommission_controller_1.getAssignedMeters);
 router.post("/decommission", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER), (0, validation_middleware_1.validationMiddleware)({ body: decommission_validation_1.decommissionMeterSchema }), decommission_controller_1.decommissionMeter);
 router.get("/logs", restrictViewer({ logs: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), (0, validation_middleware_1.validationMiddleware)({ query: decommission_validation_1.getDecommissionLogsSchema }), decommission_controller_1.getDecommissionLogs);
+router.get("/history", (0, validation_middleware_1.validationMiddleware)({ query: decommission_validation_1.getHouseholdMeterHistorySchema }), decommission_controller_1.getHouseholdMeterHistory);
 exports.default = router;
 //# sourceMappingURL=decommission.routes.js.map

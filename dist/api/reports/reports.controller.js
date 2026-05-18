@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getMemberwiseUnbridge = exports.getMemberwiseBridge = exports.getUnbridge = exports.getBridge = exports.getReport = void 0;
+exports.getViewershipCSVReports = exports.getMemberwiseUnbridge = exports.getMemberwiseBridge = exports.getUnbridge = exports.getBridge = exports.getReport = void 0;
 const reports_service_1 = require("../../services/reports/reports.service");
 const response_1 = require("../../utils/response");
 const service = new reports_service_1.ReportsService();
@@ -144,4 +144,24 @@ const getMemberwiseUnbridge = async (req, res) => {
     }
 };
 exports.getMemberwiseUnbridge = getMemberwiseUnbridge;
+const getViewershipCSVReports = async (req, res) => {
+    try {
+        const data = await service.getViewershipCSVReports({
+            date_label: req.query.date_label?.toString(),
+            month: req.query.month?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 31,
+        });
+        return (0, response_1.sendSuccess)(res, data.reports, "Viewership CSV reports fetched", 200, {
+            page: data.pagination.page,
+            limit: data.pagination.limit,
+            total: data.pagination.total,
+            totalPages: data.pagination.pages,
+        });
+    }
+    catch (e) {
+        return (0, response_1.sendError)(res, e.message || "Failed to fetch viewership CSV reports", 500);
+    }
+};
+exports.getViewershipCSVReports = getViewershipCSVReports;
 //# sourceMappingURL=reports.controller.js.map

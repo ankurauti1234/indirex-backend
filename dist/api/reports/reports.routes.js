@@ -22,5 +22,6 @@ router.get("/bridge", (0, validation_middleware_1.validationMiddleware)({ query:
 router.get("/unbridge", (0, validation_middleware_1.validationMiddleware)({ query: reports_validation_1.reportQuerySchema }), restrictViewer([]), reports_controller_1.getUnbridge);
 router.get("/memberwise-bridge", (0, validation_middleware_1.validationMiddleware)({ query: reports_validation_1.reportQuerySchema }), restrictViewer([]), reports_controller_1.getMemberwiseBridge);
 router.get("/memberwise-unbridge", (0, validation_middleware_1.validationMiddleware)({ query: reports_validation_1.reportQuerySchema }), restrictViewer([]), reports_controller_1.getMemberwiseUnbridge);
+router.get("/viewership-csv", (0, validation_middleware_1.validationMiddleware)({ query: reports_validation_1.viewershipCSVQuerySchema }), reports_controller_1.getViewershipCSVReports);
 exports.default = router;
 //# sourceMappingURL=reports.routes.js.map
