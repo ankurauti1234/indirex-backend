@@ -21,3 +21,4 @@ export * from "./InactivityAlert";
 export * from "./AlertEmailRecipient";
 export * from "./AlertSettings";
 export * from "./LogoDailyViewershipCSV";
+export * from "./HouseholdMeterHistory";
