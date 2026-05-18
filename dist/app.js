@@ -89,17 +89,21 @@ const wss = new ws_1.WebSocketServer({
 // ---------- Bootstrap & Start ----------
 async function bootstrap() {
     try {
+        console.log("1");
         await (0, tunnel_1.createDbTunnel)();
+        console.log("2");
         await connection_1.AppDataSource.initialize();
-        console.log("Data Source has been initialized!");
+        console.log("3");
+        console.log("Data Source initialized");
         const port = env_1.env.port || 3000;
+        console.log("4");
         httpServer.listen(port, () => {
-            console.log(`Server + WebSocket listening on port ${port}`);
+            console.log(`Listening on ${port}`);
         });
     }
     catch (err) {
-        console.error("Failed to start server:", err);
-        process.exit(1);
+        console.error(err);
+        throw err;
     }
 }
 // Start the server when this module is the main entry point

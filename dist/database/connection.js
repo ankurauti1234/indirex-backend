@@ -55,6 +55,8 @@ exports.AppDataSource = new typeorm_1.DataSource({
     synchronize: false,
     logging: env_1.env.nodeEnv === "development",
     entities: Object.values(entities),
-    migrations: ["src/database/migrations/**/*.ts"],
+    migrations: process.env.NODE_ENV === "production"
+        ? ["dist/database/migrations/**/*.js"]
+        : ["src/database/migrations/**/*.ts"],
 });
 //# sourceMappingURL=connection.js.map

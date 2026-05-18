@@ -20,4 +20,4 @@ export * from "./GeneratedHHMemberwiseUnbridgedReport";
 export * from "./InactivityAlert";
 export * from "./AlertEmailRecipient";
 export * from "./AlertSettings";
-export * from "./HouseholdMeterHistory";
+// export * from "./HouseholdMeterHistory";

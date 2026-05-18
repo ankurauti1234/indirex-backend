@@ -65,17 +65,25 @@ setupRemoteAccessWebSocket(wss);
 // ---------- Bootstrap & Start ----------
 async function bootstrap() {
   try {
+    console.log("1");
     await createDbTunnel();
+
+    console.log("2");
     await AppDataSource.initialize();
-    console.log("Data Source has been initialized!");
+
+    console.log("3");
+    console.log("Data Source initialized");
 
     const port = env.port || 3000;
+
+    console.log("4");
     httpServer.listen(port, () => {
-      console.log(`Server + WebSocket listening on port ${port}`);
+      console.log(`Listening on ${port}`);
     });
+
   } catch (err) {
-    console.error("Failed to start server:", err);
-    process.exit(1);
+    console.error(err);
+    throw err;
   }
 }
 
