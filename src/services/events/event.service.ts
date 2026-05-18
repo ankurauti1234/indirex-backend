@@ -15,6 +15,10 @@ import {
   HouseholdVisualizationFilters,
   PaginatedHouseholdVisualization,
   HouseholdVisualizationItem,
+  WeeklyConnectivityFilters,
+  WeeklyConnectivityItem,
+  DayConnectivity,
+  PaginatedWeeklyConnectivity,
 } from "../../api/events/events.types";
 import { AppDataSource } from "../../database/connection";
 import { Event } from "../../database/entities/Event";
@@ -543,6 +547,180 @@ export class EventService {
         total,
         pages: Math.ceil(total / take),
       },
+    };
+  }
+
+  // ─── Weekly Connectivity Report ─────────────────────────────────────────────
+
+  async getWeeklyConnectivityReport(
+    filters: WeeklyConnectivityFilters = {}
+  ): Promise<PaginatedWeeklyConnectivity> {
+    const { device_id, hhid, week_start, status, page = 1, limit = 25 } = filters;
+
+    const resolveWeekStart = (): Date => {
+      const base = week_start ? new Date(`${week_start}T00:00:00Z`) : new Date();
+      const day = base.getUTCDay();
+      const diff = day === 0 ? -6 : 1 - day;
+      const monday = new Date(base);
+      monday.setUTCDate(base.getUTCDate() + diff);
+      monday.setUTCHours(0, 0, 0, 0);
+      return monday;
+    };
+
+    const weekStart = resolveWeekStart();
+    const weekEnd = new Date(weekStart);
+    weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+
+    const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const daySlots: Array<{ dateStr: string; label: string }> = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart);
+      d.setUTCDate(weekStart.getUTCDate() + i);
+      daySlots.push({ dateStr: d.toISOString().split("T")[0], label: DAY_LABELS[i] });
+    }
+
+    const dayWindows = daySlots.map(({ dateStr }) => {
+      const base = new Date(`${dateStr}T00:00:00Z`);
+      const start = new Date(base);
+      start.setUTCDate(base.getUTCDate() - 1);
+      start.setUTCHours(22, 0, 0, 0);
+      const end = new Date(base);
+      end.setUTCHours(21, 59, 59, 999);
+      return {
+        dateStr,
+        startTs: Math.floor(start.getTime() / 1000),
+        endTs: Math.floor(end.getTime() / 1000),
+      };
+    });
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    if (device_id) {
+      params.push(`%${device_id}%`);
+      conditions.push(`m.meter_id ILIKE $${params.length}`);
+    }
+    if (hhid) {
+      params.push(`%${hhid}%`);
+      conditions.push(`h.hhid ILIKE $${params.length}`);
+    }
+
+    const conditionStr = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    const dayExistsSelects = dayWindows
+      .map(({ startTs, endTs }, idx) => `
+        CASE WHEN EXISTS (
+          SELECT 1 FROM events e_d${idx}
+          WHERE e_d${idx}.device_id = m.meter_id
+            AND e_d${idx}.timestamp >= ${startTs}
+            AND e_d${idx}.timestamp <= ${endTs}
+        ) THEN true ELSE false END AS day_${idx}`)
+      .join(",\n");
+
+    params.push(limit, (page - 1) * limit);
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
+
+    const statusFilter =
+      status === "connected" ? "WHERE ms.connected_days = 7" :
+      status === "disconnected" ? "WHERE ms.connected_days = 0" :
+      status === "partial" ? "WHERE ms.connected_days > 0 AND ms.connected_days < 7" : "";
+
+    const query = `
+      WITH latest_assignments AS (
+        SELECT DISTINCT ON (ma.meter_id)
+          ma.meter_id,
+          ma.household_id
+        FROM meter_assignments ma
+        INNER JOIN meters m ON ma.meter_id = m.id
+        WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
+        ORDER BY ma.meter_id, ma.assigned_at DESC
+      ),
+      meter_days AS (
+        SELECT
+          m.meter_id AS device_id,
+          h.hhid,
+          ${dayExistsSelects}
+        FROM latest_assignments la
+        INNER JOIN meters m ON la.meter_id = m.id
+        INNER JOIN households h ON la.household_id = h.id
+        ${conditionStr}
+      ),
+      meter_summary AS (
+        SELECT
+          *,
+          (
+            (CASE WHEN day_0 THEN 1 ELSE 0 END) +
+            (CASE WHEN day_1 THEN 1 ELSE 0 END) +
+            (CASE WHEN day_2 THEN 1 ELSE 0 END) +
+            (CASE WHEN day_3 THEN 1 ELSE 0 END) +
+            (CASE WHEN day_4 THEN 1 ELSE 0 END) +
+            (CASE WHEN day_5 THEN 1 ELSE 0 END) +
+            (CASE WHEN day_6 THEN 1 ELSE 0 END)
+          ) AS connected_days
+        FROM meter_days
+      ),
+      global_stats AS (
+        SELECT
+          COUNT(*) AS total_meters,
+          SUM(CASE WHEN connected_days = 7 THEN 1 ELSE 0 END) AS fully_connected,
+          SUM(CASE WHEN connected_days > 0 AND connected_days < 7 THEN 1 ELSE 0 END) AS partially_connected,
+          SUM(CASE WHEN connected_days = 0 THEN 1 ELSE 0 END) AS not_connected,
+          ROUND(AVG(connected_days::numeric / 7 * 100), 1) AS avg_connectivity_rate
+        FROM meter_summary
+      )
+      SELECT
+        ms.*,
+        gs.total_meters,
+        gs.fully_connected,
+        gs.partially_connected,
+        gs.not_connected,
+        gs.avg_connectivity_rate,
+        COUNT(*) OVER() AS filtered_count
+      FROM meter_summary ms
+      CROSS JOIN global_stats gs
+      ${statusFilter}
+      ORDER BY ms.device_id
+      LIMIT $${limitIdx}
+      OFFSET $${offsetIdx}
+    `;
+
+    const results = await AppDataSource.query(query, params);
+
+    const filteredCount = results.length > 0 ? parseInt(results[0].filtered_count) : 0;
+    const globalStats = results.length > 0
+      ? {
+          total_meters: parseInt(results[0].total_meters),
+          fully_connected: parseInt(results[0].fully_connected),
+          partially_connected: parseInt(results[0].partially_connected),
+          not_connected: parseInt(results[0].not_connected),
+          avg_connectivity_rate: parseFloat(results[0].avg_connectivity_rate),
+        }
+      : { total_meters: 0, fully_connected: 0, partially_connected: 0, not_connected: 0, avg_connectivity_rate: 0 };
+
+    const data: WeeklyConnectivityItem[] = results.map((row: any) => {
+      const connectedDays = parseInt(row.connected_days);
+      const days: DayConnectivity[] = daySlots.map((slot, idx) => ({
+        date: slot.dateStr,
+        day: slot.label,
+        connected: row[`day_${idx}`] === true || row[`day_${idx}`] === "t",
+      }));
+      return {
+        device_id: row.device_id,
+        hhid: row.hhid,
+        days,
+        connected_days: connectedDays,
+        total_days: 7,
+        connectivity_rate: Math.round((connectedDays / 7) * 100),
+      };
+    });
+
+    return {
+      data,
+      week_start: weekStart.toISOString().split("T")[0],
+      week_end: weekEnd.toISOString().split("T")[0],
+      stats: globalStats,
+      pagination: { page, limit, total: filteredCount, pages: Math.ceil(filteredCount / limit) },
     };
   }
 }
