@@ -12,8 +12,6 @@ const reports_1 = __importDefault(require("./reports"));
 const assets_1 = __importDefault(require("./assets"));
 const household_1 = __importDefault(require("./household"));
 const decommission_1 = __importDefault(require("./decommission"));
-const meters_1 = __importDefault(require("./meters"));
-const dashboard_1 = __importDefault(require("./dashboard"));
 const router = (0, express_1.Router)();
 router.use("/auth", auth_routes_1.default);
 router.use("/events", events_1.default);
@@ -23,7 +21,5 @@ router.use("/reports", reports_1.default);
 router.use("/assets", assets_1.default);
 router.use("/households", household_1.default);
 router.use("/decommission", decommission_1.default);
-router.use("/meters", meters_1.default);
-router.use("/dashboard", dashboard_1.default);
 exports.default = router;
 //# sourceMappingURL=index.js.map

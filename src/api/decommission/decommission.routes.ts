@@ -4,7 +4,6 @@ import {
   getAssignedMeters,
   decommissionMeter,
   getDecommissionLogs,
-  getHouseholdMeterHistory,
 } from "./decommission.controller";
 import { validationMiddleware } from "../../middleware/validation.middleware";
 import { protect } from "../../middleware/auth.middleware";
@@ -14,7 +13,6 @@ import {
   decommissionMeterSchema,
   listAssignedMetersSchema,
   getDecommissionLogsSchema,
-  getHouseholdMeterHistorySchema,
 } from "./decommission.validation";
 import { sendSuccess } from "../../utils/response";
 
@@ -49,12 +47,6 @@ router.get(
   restrictViewer({ logs: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
   validationMiddleware({ query: getDecommissionLogsSchema }),
   getDecommissionLogs
-);
-
-router.get(
-  "/history",
-  validationMiddleware({ query: getHouseholdMeterHistorySchema }),
-  getHouseholdMeterHistory
 );
 
 export default router;

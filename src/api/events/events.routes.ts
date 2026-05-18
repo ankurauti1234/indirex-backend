@@ -10,7 +10,6 @@ import {
   getConnectivityReport,
   getButtonPressedReport,
   getHouseholdVisualization,
-  getWeeklyConnectivityReport,
 } from "./events.controller";
 import eventMappingRouter from "./event-mapping.routes";
 import meterChannelsRouter from "./meter-channels.routes";
@@ -19,11 +18,10 @@ import {
   eventsQuerySchema,
   liveMonitoringQuerySchema,
   viewershipQuerySchema,
-  householdVisualizationQuerySchema,
-  weeklyConnectivityQuerySchema,
+  householdVisualizationQuerySchema
 } from "./events.validation";
 import Joi from "joi";
-import { EventService } from "../../services/events/event.service";
+import { EventService } from "../../services/events/event.service"; // ← Static import
 
 import { protect } from "../../middleware/auth.middleware";
 import { authorize } from "../../middleware/role.middleware";
@@ -44,6 +42,7 @@ const restrictViewer = (emptyData: any) => (req: any, res: any, next: any) => {
 router.use(protect);
 
 // === Event Mapping CRUD ===
+// Only for Admin/Developer (403 Forbidden is fine here as it's not on the main dashboard)
 router.use("/mapping", authorize(UserRole.ADMIN, UserRole.DEVELOPER), eventMappingRouter);
 
 // === Events ===
@@ -110,20 +109,6 @@ router.get(
   validationMiddleware({ query: householdVisualizationQuerySchema }),
   restrictViewer({ data: [], pagination: { page: 1, limit: 500, total: 0, pages: 0 } }),
   getHouseholdVisualization
-);
-
-// === Weekly Connectivity Report ===
-router.get(
-  "/weekly-connectivity",
-  validationMiddleware({ query: weeklyConnectivityQuerySchema }),
-  restrictViewer({
-    data: [],
-    week_start: "",
-    week_end: "",
-    stats: { total_meters: 0, fully_connected: 0, partially_connected: 0, not_connected: 0, avg_connectivity_rate: 0 },
-    pagination: { page: 1, limit: 25, total: 0, pages: 0 },
-  }),
-  getWeeklyConnectivityReport
 );
 
 router.use("/meter-channels",

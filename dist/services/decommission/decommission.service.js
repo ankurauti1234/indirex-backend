@@ -6,7 +6,6 @@ const connection_1 = require("../../database/connection");
 const Meter_1 = require("../../database/entities/Meter");
 const Household_1 = require("../../database/entities/Household");
 const DecommissionLog_1 = require("../../database/entities/DecommissionLog");
-const MeterAssignment_1 = require("../../database/entities/MeterAssignment");
 const User_1 = require("../../database/entities/User");
 const mqtt_client_1 = require("../mqtt/mqtt.client");
 class DecommissionService {
@@ -14,7 +13,6 @@ class DecommissionService {
         this.meterRepo = connection_1.AppDataSource.getRepository(Meter_1.Meter);
         this.householdRepo = connection_1.AppDataSource.getRepository(Household_1.Household);
         this.logRepo = connection_1.AppDataSource.getRepository(DecommissionLog_1.DecommissionLog);
-        this.assignmentRepo = connection_1.AppDataSource.getRepository(MeterAssignment_1.MeterAssignment);
         this.userRepo = connection_1.AppDataSource.getRepository(User_1.User);
     }
     async getAssignedMeters(params) {
@@ -78,8 +76,6 @@ class DecommissionService {
         meter.isAssigned = false;
         meter.assignedHousehold = null;
         await this.meterRepo.save(meter);
-        // ALSO DELETE FROM METER_ASSIGNMENTS (To fix household status issue)
-        await this.assignmentRepo.delete({ meter: { id: meter.id } });
         const log = this.logRepo.create({
             meter,
             household,

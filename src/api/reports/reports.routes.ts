@@ -1,11 +1,11 @@
 // src/api/reports/reports.routes.ts
 import { Router } from "express";
-import { getReport, getBridge, getUnbridge, getMemberwiseBridge, getMemberwiseUnbridge, getViewershipCSVReports } from "./reports.controller";
+import { getReport, getBridge, getUnbridge, getMemberwiseBridge, getMemberwiseUnbridge } from "./reports.controller";
 import { protect } from "../../middleware/auth.middleware";
 import { authorize } from "../../middleware/role.middleware";
 import { UserRole } from "../../database/entities/User";
 import { validationMiddleware } from "../../middleware/validation.middleware";
-import { reportQuerySchema, viewershipCSVQuerySchema } from "./reports.validation";
+import { reportQuerySchema } from "./reports.validation";
 import { sendSuccess } from "../../utils/response";
 
 const router = Router();
@@ -46,9 +46,4 @@ router.get("/memberwise-unbridge",
     getMemberwiseUnbridge
 );
 
-router.get("/viewership-csv",
-    validationMiddleware({ query: viewershipCSVQuerySchema }),
-    getViewershipCSVReports
-);
-
-export default router;
+export default router; 

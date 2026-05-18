@@ -53,22 +53,3 @@ export const getDecommissionLogs = async (req: Request, res: Response) => {
     sendError(res, e.message, 400);
   }
 };
-
-export const getHouseholdMeterHistory = async (req: Request, res: Response) => {
-  try {
-    const { page = 1, limit = 25, meterId, hhid, assigned_from, assigned_to, decommissioned_from, decommissioned_to } = req.query;
-    const result = await service.getHouseholdMeterHistory({
-      page: Number(page),
-      limit: Number(limit),
-      meterId: meterId as string | undefined,
-      hhid: hhid as string | undefined,
-      assigned_from: assigned_from ? new Date(assigned_from as string) : undefined,
-      assigned_to: assigned_to ? new Date(assigned_to as string) : undefined,
-      decommissioned_from: decommissioned_from ? new Date(decommissioned_from as string) : undefined,
-      decommissioned_to: decommissioned_to ? new Date(decommissioned_to as string) : undefined,
-    });
-    sendSuccess(res, result.data, "Household meter history retrieved", 200, result.pagination);
-  } catch (e: any) {
-    sendError(res, e.message, 400);
-  }
-};
