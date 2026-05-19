@@ -4,6 +4,8 @@ import {
   updatePreassignedContact,
   uploadHouseholdMembers,
   deleteHouseholdMember,
+  assignMembersManually,
+  getPreregisteredEmails,
 } from "./household.controller";
 import { protect } from "../../middleware/auth.middleware";
 import { authorize } from "../../middleware/role.middleware";
@@ -13,6 +15,8 @@ import {
   listHouseholdsSchema,
   updateContactSchema,
   uploadMembersSchema,
+  assignMembersManuallySchema,
+  preregisteredEmailsSchema,
 } from "./household.validation";
 import Joi from "joi";
 import { sendSuccess } from "../../utils/response";
@@ -59,5 +63,21 @@ router.post(
 
 // DELETE /api/households/members/:memberId
 router.delete("/members/:memberId", authorize(UserRole.ADMIN, UserRole.DEVELOPER), deleteHouseholdMember);
+
+// POST /api/households/members/assign  — manual form-based member assignment
+router.post(
+  "/members/assign",
+  authorize(UserRole.ADMIN, UserRole.DEVELOPER),
+  validationMiddleware({ body: assignMembersManuallySchema }),
+  assignMembersManually
+);
+
+// GET /api/households/contacts/emails  — autocomplete for preregistered emails
+router.get(
+  "/contacts/emails",
+  authorize(UserRole.ADMIN, UserRole.DEVELOPER),
+  validationMiddleware({ query: preregisteredEmailsSchema }),
+  getPreregisteredEmails
+);
 
 export default router;

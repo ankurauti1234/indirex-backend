@@ -44,6 +44,7 @@ const GeneratedHHMemberwiseUnbridgedReport_1 = require("../../database/entities/
 const csvWriter = __importStar(require("fast-csv"));
 const XLSX = __importStar(require("xlsx"));
 const fast_xml_parser_1 = require("fast-xml-parser");
+const LogoDailyViewershipCSV_1 = require("../../database/entities/LogoDailyViewershipCSV");
 class ReportsService {
     constructor() {
         this.repo = connection_1.AppDataSource.getRepository(Event_1.Event);
@@ -465,6 +466,29 @@ class ReportsService {
             default:
                 throw new Error("Unsupported format");
         }
+    }
+    // ─── Viewership CSV Reports ───────────────────────────────────────────────────
+    async getViewershipCSVReports(filters) {
+        const { date_label, month, page = 1, limit = 31 } = filters;
+        const repo = connection_1.AppDataSource.getRepository(LogoDailyViewershipCSV_1.LogoDailyViewershipCSV);
+        const qb = repo.createQueryBuilder("v");
+        if (date_label) {
+            qb.andWhere("v.date_label = :date_label", { date_label });
+        }
+        // month is "MM-YYYY"; date_label format is "DD-MM-YYYY", so match the suffix
+        if (month) {
+            qb.andWhere("v.date_label LIKE :month", { month: `%-${month}` });
+        }
+        qb.orderBy("v.createdAt", "DESC");
+        const total = await qb.getCount();
+        const reports = await qb.skip((page - 1) * limit).take(limit).getMany();
+        return {
+            reports,
+            pagination: {
+                page, limit, total, totalPages: Math.ceil(total / limit),
+                pages: 0
+            },
+        };
     }
 }
 exports.ReportsService = ReportsService;
