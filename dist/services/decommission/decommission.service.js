@@ -19,6 +19,16 @@ class DecommissionService {
         this.userRepo = connection_1.AppDataSource.getRepository(User_1.User);
         this.historyRepo = connection_1.AppDataSource.getRepository(HouseholdMeterHistory_1.HouseholdMeterHistory);
     }
+    // Returns a flat list of all currently active hhid->meterId assignments
+    async getActiveAssignments() {
+        const meters = await this.meterRepo.find({
+            where: { isAssigned: true },
+            relations: ["assignedHousehold"],
+        });
+        return meters
+            .filter((m) => m.assignedHousehold?.hhid && m.meterId)
+            .map((m) => ({ hhid: m.assignedHousehold.hhid, meterId: m.meterId }));
+    }
     async getAssignedMeters(params) {
         // ... (unchanged - keep your existing logic)
         const { page, limit, search } = params;
@@ -184,16 +194,30 @@ class DecommissionService {
         if (decommissioned_to) {
             qb.andWhere("h.decommissionedAt <= :decommissioned_to", { decommissioned_to });
         }
-        qb.orderBy("h.decommissionedAt", "DESC");
+        qb.orderBy("h.assignedAt", "DESC");
         const total = await qb.getCount();
         const rows = await qb.skip((page - 1) * limit).take(limit).getMany();
+        // Get unique household UUIDs from this page
+        const householdIds = [...new Set(rows.map((r) => r.household.id))];
+        // Raw query: join meter_assignments with meters to get active meter_id string per household
+        const activeMap = new Map(); // household_id (uuid) -> meterId (string)
+        if (householdIds.length > 0) {
+            const activeRows = await this.assignmentRepo.manager.query(`SELECT a.household_id::text, m.meter_id AS meter_id_str
+           FROM meter_assignments a
+           INNER JOIN meters m ON m.id = a.meter_id
+           WHERE a.household_id = ANY($1::uuid[])`, [householdIds]);
+            for (const row of activeRows) {
+                activeMap.set(row.household_id, row.meter_id_str);
+            }
+        }
         return {
             data: rows.map((r) => ({
-                id: r.id,
+                id: String(r.id),
                 meterId: r.meter.meterId,
                 hhid: r.household.hhid,
                 assignedAt: r.assignedAt,
                 decommissionedAt: r.decommissionedAt ?? null,
+                activeMeterId: activeMap.get(r.household.id) ?? null,
             })),
             pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
         };
