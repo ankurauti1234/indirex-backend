@@ -34,5 +34,9 @@ router.post("/members/upload", (0, role_middleware_1.authorize)(User_1.UserRole.
 }), household_controller_1.uploadHouseholdMembers);
 // DELETE /api/households/members/:memberId
 router.delete("/members/:memberId", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER), household_controller_1.deleteHouseholdMember);
+// POST /api/households/members/assign  — manual form-based member assignment
+router.post("/members/assign", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER), (0, validation_middleware_1.validationMiddleware)({ body: household_validation_1.assignMembersManuallySchema }), household_controller_1.assignMembersManually);
+// GET /api/households/contacts/emails  — autocomplete for preregistered emails
+router.get("/contacts/emails", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER), (0, validation_middleware_1.validationMiddleware)({ query: household_validation_1.preregisteredEmailsSchema }), household_controller_1.getPreregisteredEmails);
 exports.default = router;
 //# sourceMappingURL=household.routes.js.map
