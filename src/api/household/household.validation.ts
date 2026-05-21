@@ -16,3 +16,23 @@ export const updateContactSchema = Joi.object({
 export const uploadMembersSchema = Joi.object({
   householdId: Joi.string().uuid().required(),
 });
+
+export const assignMembersManuallySchema = Joi.object({
+  hhid: Joi.string().required(),
+  contactEmail: Joi.string().email().required(),
+  members: Joi.array()
+    .items(
+      Joi.object({
+        memberCode: Joi.string().max(10).required(),
+        age: Joi.number().integer().min(0).max(120).required(),
+        gender: Joi.string().valid("Male", "Female", "Other").required(),
+        dob: Joi.string().isoDate().optional(),
+      })
+    )
+    .min(1)
+    .required(),
+});
+
+export const preregisteredEmailsSchema = Joi.object({
+  search: Joi.string().optional().allow(""),
+});

@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteHouseholdMember = exports.uploadHouseholdMembers = exports.updatePreassignedContact = exports.getHouseholds = void 0;
+exports.getPreregisteredEmails = exports.assignMembersManually = exports.deleteHouseholdMember = exports.uploadHouseholdMembers = exports.updatePreassignedContact = exports.getHouseholds = void 0;
 const household_service_1 = require("../../services/household/household.service");
 const response_1 = require("../../utils/response");
 const multer_1 = __importDefault(require("multer"));
@@ -72,4 +72,27 @@ const deleteHouseholdMember = async (req, res) => {
     }
 };
 exports.deleteHouseholdMember = deleteHouseholdMember;
+const assignMembersManually = async (req, res) => {
+    try {
+        const { hhid, contactEmail, members } = req.body;
+        const result = await service.assignMembersManually(hhid, contactEmail, members);
+        (0, response_1.sendSuccess)(res, result, "Members assigned successfully", 201);
+    }
+    catch (e) {
+        const status = e.message?.includes("already has members") ? 409 : 400;
+        (0, response_1.sendError)(res, e.message, status);
+    }
+};
+exports.assignMembersManually = assignMembersManually;
+const getPreregisteredEmails = async (req, res) => {
+    try {
+        const { search } = req.query;
+        const emails = await service.getPreregisteredEmails(search);
+        (0, response_1.sendSuccess)(res, emails, "Emails listed");
+    }
+    catch (e) {
+        (0, response_1.sendError)(res, e.message, 500);
+    }
+};
+exports.getPreregisteredEmails = getPreregisteredEmails;
 //# sourceMappingURL=household.controller.js.map

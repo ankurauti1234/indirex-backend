@@ -65,3 +65,24 @@ export const deleteHouseholdMember = async (req: Request, res: Response) => {
     sendError(res, e.message, 400);
   }
 };
+
+export const assignMembersManually = async (req: Request, res: Response) => {
+  try {
+    const { hhid, contactEmail, members } = req.body;
+    const result = await service.assignMembersManually(hhid, contactEmail, members);
+    sendSuccess(res, result, "Members assigned successfully", 201);
+  } catch (e: any) {
+    const status = e.message?.includes("already has members") ? 409 : 400;
+    sendError(res, e.message, status);
+  }
+};
+
+export const getPreregisteredEmails = async (req: Request, res: Response) => {
+  try {
+    const { search } = req.query;
+    const emails = await service.getPreregisteredEmails(search as string | undefined);
+    sendSuccess(res, emails, "Emails listed");
+  } catch (e: any) {
+    sendError(res, e.message, 500);
+  }
+};

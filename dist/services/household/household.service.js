@@ -286,6 +286,73 @@ class HouseholdService {
             throw new Error("Member not found");
         await this.memberRepo.remove(member);
     }
+    // ── Manual member assignment ────────────────────────────────────────────────
+    async assignMembersManually(hhid, contactEmail, members) {
+        // 1. Resolve household by HHID string (case-insensitive)
+        const normalizedHhid = hhid.trim().toUpperCase();
+        const household = await this.householdRepo
+            .createQueryBuilder("h")
+            .leftJoinAndSelect("h.members", "members")
+            .where("UPPER(h.hhid) = :hhid", { hhid: normalizedHhid })
+            .getOne();
+        if (!household)
+            throw new Error(`Household with HHID "${normalizedHhid}" not found`);
+        // 2. Block reassignment if household already has members
+        if (household.members && household.members.length > 0) {
+            throw new Error(`HHID "${normalizedHhid}" already has members assigned. Cannot overwrite existing assignment.`);
+        }
+        // 3. Build and save member entities
+        const today = new Date();
+        const memberEntities = members.map((m) => {
+            let dob;
+            if (m.dob) {
+                dob = new Date(m.dob);
+                if (isNaN(dob.getTime()))
+                    throw new Error(`Invalid DOB for ${m.memberCode}`);
+            }
+            else {
+                dob = new Date(today);
+                dob.setFullYear(today.getFullYear() - m.age);
+            }
+            return this.memberRepo.create({
+                household,
+                memberCode: m.memberCode,
+                dob,
+                gender: m.gender,
+            });
+        });
+        const saved = await this.memberRepo.save(memberEntities);
+        // 4. Upsert preregistered_contacts — update if exists, create if not
+        const existing = await this.contactRepo.findOne({
+            where: { household: { id: household.id } },
+        });
+        if (existing) {
+            existing.contactEmail = contactEmail;
+            existing.isActive = true;
+            await this.contactRepo.save(existing);
+        }
+        else {
+            const contact = this.contactRepo.create({
+                household,
+                contactEmail,
+                isActive: true,
+            });
+            await this.contactRepo.save(contact);
+        }
+        return { saved: saved.length, email: contactEmail };
+    }
+    // ── Preregistered contact emails (for the email autocomplete dropdown) ──────
+    async getPreregisteredEmails(search) {
+        const qb = this.contactRepo
+            .createQueryBuilder("c")
+            .select("DISTINCT c.contact_email", "email")
+            .where("c.is_active = :active", { active: true });
+        if (search) {
+            qb.andWhere("c.contact_email ILIKE :search", { search: `%${search}%` });
+        }
+        const rows = await qb.limit(30).getRawMany();
+        return rows.map((r) => r.email);
+    }
 }
 exports.HouseholdService = HouseholdService;
 //# sourceMappingURL=household.service.js.map
