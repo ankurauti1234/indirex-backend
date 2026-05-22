@@ -55,22 +55,46 @@ const transporter = nodemailer_1.default.createTransport({
     },
 });
 /**
+ * Format a duration in milliseconds into a human-readable string like "3d 4h 12m".
+ */
+function formatDuration(ms) {
+    const totalMinutes = Math.floor(ms / 60000);
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor((totalMinutes % 1440) / 60);
+    const minutes = totalMinutes % 60;
+    const parts = [];
+    if (days > 0)
+        parts.push(`${days}d`);
+    if (hours > 0)
+        parts.push(`${hours}h`);
+    if (minutes > 0 || parts.length === 0)
+        parts.push(`${minutes}m`);
+    return parts.join(" ");
+}
+/**
  * Generate an Excel buffer from the inactivity alerts data.
+ * Columns match the UI page: Device ID, HHID, Last Event Sent, Inactive For, Detected At
  */
 function generateInactivityExcel(alerts) {
-    const rows = alerts.map((a) => ({
-        "Device ID": a.device_id,
-        "HHID": a.hhid || "N/A",
-        "Last Connectivity": a.lastEventAt
-            ? new Date(a.lastEventAt).toLocaleString("en-IN", {
+    const now = new Date();
+    const rows = alerts.map((a) => {
+        const inactiveDuration = a.lastEventAt
+            ? formatDuration(now.getTime() - new Date(a.lastEventAt).getTime())
+            : "Never connected";
+        return {
+            "Device ID": a.device_id,
+            "HHID": a.hhid || "N/A",
+            "Last Event Sent": a.lastEventAt
+                ? new Date(a.lastEventAt).toLocaleString("en-IN", {
+                    timeZone: "Asia/Kolkata",
+                })
+                : "Never",
+            "Inactive For": inactiveDuration,
+            "Detected At": new Date(a.detectedAt).toLocaleString("en-IN", {
                 timeZone: "Asia/Kolkata",
-            })
-            : "Never",
-        "Inactive Since": new Date(a.detectedAt).toLocaleString("en-IN", {
-            timeZone: "Asia/Kolkata",
-        }),
-        "Status": "Inactive",
-    }));
+            }),
+        };
+    });
     const ws = XLSX.utils.json_to_sheet(rows);
     // Auto-size columns
     const colWidths = Object.keys(rows[0] || {}).map((key) => ({
