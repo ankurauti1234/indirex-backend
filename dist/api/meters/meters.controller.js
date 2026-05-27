@@ -41,7 +41,8 @@ const getInstalledMeters = async (req, res) => {
     try {
         const meterRepo = connection_1.AppDataSource.getRepository(Meter_1.Meter);
         const page = Math.max(1, Number(req.query.page) || 1);
-        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
+        const isExport = req.query.export === "true";
+        const limit = isExport ? 999999 : Math.min(100, Math.max(1, Number(req.query.limit) || 25));
         const search = req.query.search || "";
         const dateFrom = req.query.dateFrom || "";
         const dateTo = req.query.dateTo || "";
