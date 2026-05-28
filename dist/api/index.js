@@ -15,6 +15,7 @@ const decommission_1 = __importDefault(require("./decommission"));
 const meters_1 = __importDefault(require("./meters"));
 const dashboard_1 = __importDefault(require("./dashboard"));
 const alerts_1 = __importDefault(require("./alerts"));
+const device_reports_1 = __importDefault(require("./device-reports"));
 const router = (0, express_1.Router)();
 router.use("/auth", auth_routes_1.default);
 router.use("/events", events_1.default);
@@ -27,5 +28,6 @@ router.use("/decommission", decommission_1.default);
 router.use("/meters", meters_1.default);
 router.use("/dashboard", dashboard_1.default);
 router.use("/alerts", alerts_1.default);
+router.use("/device-reports", device_reports_1.default);
 exports.default = router;
 //# sourceMappingURL=index.js.map

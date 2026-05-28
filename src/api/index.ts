@@ -10,6 +10,8 @@ import decommissionRouter from "./decommission";
 import metersRouter from "./meters";
 import dashboardRouter from "./dashboard";
 import alertsRouter from "./alerts";
+import deviceReportsRouter from "./device-reports";
+
 
 
 const router = Router();
@@ -28,5 +30,7 @@ router.use("/meters", metersRouter);
 router.use("/dashboard", dashboardRouter);
 
 router.use("/alerts", alertsRouter);
+router.use("/device-reports", deviceReportsRouter);
+
 
 export default router;
