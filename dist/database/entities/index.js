@@ -38,4 +38,6 @@ __exportStar(require("./AlertEmailRecipient"), exports);
 __exportStar(require("./AlertSettings"), exports);
 __exportStar(require("./LogoDailyViewershipCSV"), exports);
 __exportStar(require("./HouseholdMeterHistory"), exports);
+__exportStar(require("./DeviceHealthReportCSV"), exports);
+__exportStar(require("./SilentDeviceReportCSV"), exports);
 //# sourceMappingURL=index.js.map

@@ -22,3 +22,5 @@ export * from "./AlertEmailRecipient";
 export * from "./AlertSettings";
 export * from "./LogoDailyViewershipCSV";
 export * from "./HouseholdMeterHistory";
+export * from "./DeviceHealthReportCSV";
+export * from "./SilentDeviceReportCSV";
