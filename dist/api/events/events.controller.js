@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getWeeklyConnectivityReport = exports.getHouseholdVisualization = exports.getButtonPressedReport = exports.getConnectivityReport = exports.getViewership = exports.getLiveMonitoring = exports.getAlertsByDevice = exports.getAlerts = exports.getEventsByType = exports.getEvents = void 0;
+exports.getDailyReport = exports.getWeeklyConnectivityReport = exports.getHouseholdVisualization = exports.getButtonPressedReport = exports.getConnectivityReport = exports.getViewership = exports.getLiveMonitoring = exports.getAlertsByDevice = exports.getAlerts = exports.getEventsByType = exports.getEvents = void 0;
 const response_1 = require("../../utils/response");
 const event_service_1 = require("../../services/events/event.service");
 const service = new event_service_1.EventService();
@@ -173,4 +173,22 @@ const getWeeklyConnectivityReport = async (req, res) => {
     }
 };
 exports.getWeeklyConnectivityReport = getWeeklyConnectivityReport;
+const getDailyReport = async (req, res) => {
+    try {
+        const filters = {
+            device_id: req.query.device_id?.toString(),
+            hhid: req.query.hhid?.toString(),
+            date: req.query.date?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 25,
+        };
+        const data = await service.getDailyReport(filters);
+        (0, response_1.sendSuccess)(res, data, "Daily report retrieved");
+    }
+    catch (e) {
+        console.error("getDailyReport error:", e);
+        (0, response_1.sendSuccess)(res, { data: [], stats: { total: 0, connectivity: 0, viewership: 0, member_dec: 0 }, pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error retrieving daily report");
+    }
+};
+exports.getDailyReport = getDailyReport;
 //# sourceMappingURL=events.controller.js.map

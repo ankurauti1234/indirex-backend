@@ -11,6 +11,7 @@ import {
   getButtonPressedReport,
   getHouseholdVisualization,
   getWeeklyConnectivityReport,
+  getDailyReport
 } from "./events.controller";
 import eventMappingRouter from "./event-mapping.routes";
 import meterChannelsRouter from "./meter-channels.routes";
@@ -126,6 +127,17 @@ router.get(
   getWeeklyConnectivityReport
 );
 
+router.use("/meter-channels",
+  restrictViewer({ channels: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
+  meterChannelsRouter
+);
+
+router.get(
+  "/daily-report",
+  validationMiddleware({ query: viewershipQuerySchema }),
+  getDailyReport
+);
+ 
 router.use("/meter-channels",
   restrictViewer({ channels: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
   meterChannelsRouter
