@@ -172,3 +172,20 @@ export const getWeeklyConnectivityReport = async (req: Request, res: Response) =
     );
   }
 };
+
+export const getDailyReport = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      device_id: req.query.device_id?.toString(),
+      hhid:      req.query.hhid?.toString(),
+      date:      req.query.date?.toString(),
+      page:      req.query.page  ? parseInt(req.query.page  as string, 10) : 1,
+      limit:     req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
+    };
+    const data = await service.getDailyReport(filters);
+    sendSuccess(res, data, "Daily report retrieved");
+  } catch (e: any) {
+    console.error("getDailyReport error:", e);
+    sendSuccess(res, { data: [], stats: { total: 0, connectivity: 0, viewership: 0, member_dec: 0 }, pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error retrieving daily report");
+  }
+};

@@ -608,6 +608,115 @@ class EventService {
             pagination: { page, limit, total: filteredCount, pages: Math.ceil(filteredCount / limit) },
         };
     }
+    async getDailyReport(filters = {}) {
+        const { device_id, hhid, date, page = 1, limit = 25 } = filters;
+        const take = limit;
+        const skip = (page - 1) * take;
+        const targetDateStr = date || new Date().toISOString().split("T")[0];
+        const baseDate = new Date(`${targetDateStr}T00:00:00Z`);
+        const startDate = new Date(baseDate);
+        startDate.setUTCDate(startDate.getUTCDate() - 1);
+        startDate.setUTCHours(22, 0, 0, 0);
+        const endDate = new Date(baseDate);
+        endDate.setUTCHours(21, 59, 59, 999);
+        const startTs = Math.floor(startDate.getTime() / 1000);
+        const endTs = Math.floor(endDate.getTime() / 1000);
+        const conditions = [];
+        const params = [startTs, endTs];
+        if (device_id) {
+            params.push(`%${device_id}%`);
+            conditions.push(`m.meter_id ILIKE $${params.length}`);
+        }
+        if (hhid) {
+            params.push(`%${hhid}%`);
+            conditions.push(`h.hhid ILIKE $${params.length}`);
+        }
+        const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+        params.push(take, skip);
+        const limitIdx = params.length - 1;
+        const offsetIdx = params.length;
+        const query = `
+      WITH latest_assignments AS (
+        SELECT DISTINCT ON (ma.meter_id)
+          ma.meter_id,
+          ma.household_id
+        FROM meter_assignments ma
+        INNER JOIN meters m ON ma.meter_id = m.id
+        WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
+        ORDER BY ma.meter_id, ma.assigned_at DESC
+      ),
+      base AS (
+        SELECT
+          m.meter_id AS device_id,
+          h.hhid,
+          COALESCE(h.region, '—') AS region
+        FROM latest_assignments la
+        INNER JOIN meters m  ON la.meter_id    = m.id
+        INNER JOIN households h ON la.household_id = h.id
+        ${whereClause}
+      ),
+      conn AS (
+        SELECT e.device_id, 'Yes' AS has_event
+        FROM events e
+        INNER JOIN base b ON b.device_id = e.device_id
+        WHERE e.timestamp >= $1 AND e.timestamp <= $2
+        GROUP BY e.device_id
+      ),
+      view AS (
+        SELECT e.device_id, 'Yes' AS has_event
+        FROM events e
+        INNER JOIN base b ON b.device_id = e.device_id
+        WHERE e.timestamp >= $1 AND e.timestamp <= $2
+          AND e.type IN (29, 42)
+        GROUP BY e.device_id
+      ),
+      memdec AS (
+        SELECT e.device_id, 'Yes' AS has_event
+        FROM events e
+        INNER JOIN base b ON b.device_id = e.device_id
+        WHERE e.timestamp >= $1 AND e.timestamp <= $2
+          AND e.type = 23
+        GROUP BY e.device_id
+      ),
+      combined AS (
+        SELECT
+          b.device_id,
+          b.hhid,
+          b.region,
+          COALESCE(c.has_event,  'No') AS connectivity,
+          COALESCE(v.has_event,  'No') AS viewership,
+          COALESCE(md.has_event, 'No') AS member_dec,
+          COUNT(*) OVER() AS total_count
+        FROM base b
+        LEFT JOIN conn   c  ON c.device_id  = b.device_id
+        LEFT JOIN view   v  ON v.device_id  = b.device_id
+        LEFT JOIN memdec md ON md.device_id = b.device_id
+      )
+      SELECT *
+      FROM combined
+      ORDER BY device_id
+      LIMIT  $${limitIdx}
+      OFFSET $${offsetIdx}
+    `;
+        const rows = await connection_1.AppDataSource.query(query, params);
+        const total = rows.length > 0 ? parseInt(rows[0].total_count) : 0;
+        const connCount = rows.filter((r) => r.connectivity === "Yes").length;
+        const viewCount = rows.filter((r) => r.viewership === "Yes").length;
+        const memCount = rows.filter((r) => r.member_dec === "Yes").length;
+        return {
+            data: rows.map((r) => ({
+                device_id: r.device_id,
+                hhid: r.hhid,
+                date: targetDateStr,
+                region: r.region,
+                connectivity: r.connectivity,
+                viewership: r.viewership,
+                member_dec: r.member_dec,
+            })),
+            stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount },
+            pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+        };
+    }
 }
 exports.EventService = EventService;
 //# sourceMappingURL=event.service.js.map

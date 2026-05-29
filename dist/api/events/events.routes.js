@@ -54,6 +54,8 @@ router.get("/weekly-connectivity", (0, validation_middleware_1.validationMiddlew
     pagination: { page: 1, limit: 25, total: 0, pages: 0 },
 }), events_controller_1.getWeeklyConnectivityReport);
 router.use("/meter-channels", restrictViewer({ channels: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), meter_channels_routes_1.default);
+router.get("/daily-report", (0, validation_middleware_1.validationMiddleware)({ query: events_validation_1.viewershipQuerySchema }), events_controller_1.getDailyReport);
+router.use("/meter-channels", restrictViewer({ channels: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), meter_channels_routes_1.default);
 // === Debug endpoint (safe version) ===
 router.get("/debug", async (_req, res) => {
     try {
