@@ -723,6 +723,9 @@ export class EventService {
       pagination: { page, limit, total: filteredCount, pages: Math.ceil(filteredCount / limit) },
     };
   }
+// ── Daily Combined Report ────────────────────────────────────────────────────
+  // Merges connectivity, viewership, and member declaration (type 23) per meter
+  // for a given date. Returns one row per meter with Yes/No for each dimension.
 
   async getDailyReport(filters: ViewershipFilters = {}): Promise<{
     data: Array<{
@@ -740,23 +743,23 @@ export class EventService {
     const { device_id, hhid, date, page = 1, limit = 25 } = filters;
     const take = limit;
     const skip = (page - 1) * take;
- 
+
     const targetDateStr = date || new Date().toISOString().split("T")[0];
     const baseDate = new Date(`${targetDateStr}T00:00:00Z`);
- 
+
     const startDate = new Date(baseDate);
     startDate.setUTCDate(startDate.getUTCDate() - 1);
     startDate.setUTCHours(22, 0, 0, 0);
- 
+
     const endDate = new Date(baseDate);
     endDate.setUTCHours(21, 59, 59, 999);
- 
+
     const startTs = Math.floor(startDate.getTime() / 1000);
     const endTs   = Math.floor(endDate.getTime()   / 1000);
- 
+
     const conditions: string[] = [];
     const params: any[] = [startTs, endTs];
- 
+
     if (device_id) {
       params.push(`%${device_id}%`);
       conditions.push(`m.meter_id ILIKE $${params.length}`);
@@ -765,13 +768,13 @@ export class EventService {
       params.push(`%${hhid}%`);
       conditions.push(`h.hhid ILIKE $${params.length}`);
     }
- 
+
     const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
- 
+
     params.push(take, skip);
     const limitIdx  = params.length - 1;
     const offsetIdx = params.length;
- 
+
     const query = `
       WITH latest_assignments AS (
         SELECT DISTINCT ON (ma.meter_id)
@@ -808,12 +811,12 @@ export class EventService {
         GROUP BY e.device_id
       ),
       memdec AS (
-        SELECT e.device_id, 'Yes' AS has_event
+        -- Member declaration = any type 3 event exists in the window (matches button pressed report logic)
+        SELECT DISTINCT e.device_id, 'Yes' AS has_event
         FROM events e
         INNER JOIN base b ON b.device_id = e.device_id
         WHERE e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type = 23
-        GROUP BY e.device_id
+          AND e.type = 3
       ),
       combined AS (
         SELECT
@@ -835,14 +838,14 @@ export class EventService {
       LIMIT  $${limitIdx}
       OFFSET $${offsetIdx}
     `;
- 
+
     const rows = await AppDataSource.query(query, params);
- 
+
     const total      = rows.length > 0 ? parseInt(rows[0].total_count) : 0;
     const connCount  = rows.filter((r: any) => r.connectivity === "Yes").length;
     const viewCount  = rows.filter((r: any) => r.viewership   === "Yes").length;
     const memCount   = rows.filter((r: any) => r.member_dec   === "Yes").length;
- 
+
     return {
       data: rows.map((r: any) => ({
         device_id:    r.device_id,
@@ -857,4 +860,5 @@ export class EventService {
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
+
 }

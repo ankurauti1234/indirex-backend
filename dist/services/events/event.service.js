@@ -608,6 +608,9 @@ class EventService {
             pagination: { page, limit, total: filteredCount, pages: Math.ceil(filteredCount / limit) },
         };
     }
+    // ── Daily Combined Report ────────────────────────────────────────────────────
+    // Merges connectivity, viewership, and member declaration (type 23) per meter
+    // for a given date. Returns one row per meter with Yes/No for each dimension.
     async getDailyReport(filters = {}) {
         const { device_id, hhid, date, page = 1, limit = 25 } = filters;
         const take = limit;
@@ -671,12 +674,12 @@ class EventService {
         GROUP BY e.device_id
       ),
       memdec AS (
-        SELECT e.device_id, 'Yes' AS has_event
+        -- Member declaration = any type 3 event exists in the window (matches button pressed report logic)
+        SELECT DISTINCT e.device_id, 'Yes' AS has_event
         FROM events e
         INNER JOIN base b ON b.device_id = e.device_id
         WHERE e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type = 23
-        GROUP BY e.device_id
+          AND e.type = 3
       ),
       combined AS (
         SELECT
