@@ -736,8 +736,10 @@ export class EventService {
       connectivity: "Yes" | "No";
       viewership: "Yes" | "No";
       member_dec: "Yes" | "No";
+      image_rec: "Yes" | "No";
+      audio_fingerprint: string;
     }>;
-    stats: { total: number; connectivity: number; viewership: number; member_dec: number };
+    stats: { total: number; connectivity: number; viewership: number; member_dec: number; image_rec: number };
     pagination: { page: number; limit: number; total: number; pages: number };
   }> {
     const { device_id, hhid, date, page = 1, limit = 25 } = filters;
@@ -818,19 +820,29 @@ export class EventService {
         WHERE e.timestamp >= $1 AND e.timestamp <= $2
           AND e.type = 3
       ),
+      image_rec AS (
+        -- Recognised image event = type 29
+        SELECT DISTINCT e.device_id, 'Yes' AS has_event
+        FROM events e
+        INNER JOIN base b ON b.device_id = e.device_id
+        WHERE e.timestamp >= $1 AND e.timestamp <= $2
+          AND e.type = 29
+      ),
       combined AS (
         SELECT
           b.device_id,
           b.hhid,
           b.region,
-          COALESCE(c.has_event,  'No') AS connectivity,
-          COALESCE(v.has_event,  'No') AS viewership,
-          COALESCE(md.has_event, 'No') AS member_dec,
+          COALESCE(c.has_event,   'No') AS connectivity,
+          COALESCE(v.has_event,   'No') AS viewership,
+          COALESCE(md.has_event,  'No') AS member_dec,
+          COALESCE(ir.has_event,  'No') AS image_rec,
           COUNT(*) OVER() AS total_count
         FROM base b
         LEFT JOIN conn   c  ON c.device_id  = b.device_id
         LEFT JOIN view   v  ON v.device_id  = b.device_id
         LEFT JOIN memdec md ON md.device_id = b.device_id
+        LEFT JOIN image_rec ir ON ir.device_id = b.device_id
       )
       SELECT *
       FROM combined
@@ -845,6 +857,7 @@ export class EventService {
     const connCount  = rows.filter((r: any) => r.connectivity === "Yes").length;
     const viewCount  = rows.filter((r: any) => r.viewership   === "Yes").length;
     const memCount   = rows.filter((r: any) => r.member_dec   === "Yes").length;
+    const imgCount   = rows.filter((r: any) => r.image_rec    === "Yes").length;
 
     return {
       data: rows.map((r: any) => ({
@@ -854,9 +867,11 @@ export class EventService {
         region:       r.region,
         connectivity: r.connectivity,
         viewership:   r.viewership,
-        member_dec:   r.member_dec,
+        member_dec:        r.member_dec,
+        image_rec:         r.image_rec,
+        audio_fingerprint: "--",
       })),
-      stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount },
+      stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount },
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
