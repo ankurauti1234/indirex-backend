@@ -734,10 +734,10 @@ export class EventService {
       date: string;
       region: string;
       connectivity: "Yes" | "No";
-      viewership: "Yes" | "No";
+      viewership: "Yes" | "No" | "No Data";
       member_dec: "Yes" | "No";
       image_rec: "Yes" | "No";
-      audio_fingerprint: string;
+      audio_fingerprint: "Yes" | "No" | "No Data";
     }>;
     stats: { total: number; connectivity: number; viewership: number; member_dec: number; image_rec: number };
     pagination: { page: number; limit: number; total: number; pages: number };
@@ -805,12 +805,36 @@ export class EventService {
         GROUP BY e.device_id
       ),
       view AS (
-        SELECT e.device_id, 'Yes' AS has_event
-        FROM events e
-        INNER JOIN base b ON b.device_id = e.device_id
-        WHERE e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type IN (29, 42)
-        GROUP BY e.device_id
+        -- Viewership: type 29 = Yes, type 30 = No, neither = No Data (NULL)
+        SELECT
+          b.device_id,
+          CASE
+            WHEN bool_or(e.type = 29) THEN 'Yes'
+            WHEN bool_or(e.type = 30) THEN 'No'
+            ELSE NULL
+          END AS has_event
+        FROM base b
+        LEFT JOIN events e
+          ON e.device_id = b.device_id
+          AND e.timestamp >= $1 AND e.timestamp <= $2
+          AND e.type IN (29, 30)
+        GROUP BY b.device_id
+      ),
+      audio_fp AS (
+        -- Audio fingerprint: MATCHED = Yes, UNMATCHED = No, no type 42 = No Data (NULL)
+        SELECT
+          b.device_id,
+          CASE
+            WHEN bool_or(e.type = 42 AND (e.details->>'status') = 'MATCHED') THEN 'Yes'
+            WHEN bool_or(e.type = 42) THEN 'No'
+            ELSE NULL
+          END AS fp_status
+        FROM base b
+        LEFT JOIN events e
+          ON e.device_id = b.device_id
+          AND e.timestamp >= $1 AND e.timestamp <= $2
+          AND e.type = 42
+        GROUP BY b.device_id
       ),
       memdec AS (
         -- Member declaration = any type 3 event exists in the window (matches button pressed report logic)
@@ -834,15 +858,17 @@ export class EventService {
           b.hhid,
           b.region,
           COALESCE(c.has_event,   'No') AS connectivity,
-          COALESCE(v.has_event,   'No') AS viewership,
+          COALESCE(v.has_event,   'No Data') AS viewership,
           COALESCE(md.has_event,  'No') AS member_dec,
           COALESCE(ir.has_event,  'No') AS image_rec,
+          COALESCE(af.fp_status,  'No Data') AS audio_fingerprint,
           COUNT(*) OVER() AS total_count
         FROM base b
-        LEFT JOIN conn   c  ON c.device_id  = b.device_id
-        LEFT JOIN view   v  ON v.device_id  = b.device_id
-        LEFT JOIN memdec md ON md.device_id = b.device_id
+        LEFT JOIN conn      c  ON c.device_id  = b.device_id
+        LEFT JOIN view      v  ON v.device_id  = b.device_id
+        LEFT JOIN memdec    md ON md.device_id = b.device_id
         LEFT JOIN image_rec ir ON ir.device_id = b.device_id
+        LEFT JOIN audio_fp  af ON af.device_id = b.device_id
       )
       SELECT *
       FROM combined
@@ -869,7 +895,7 @@ export class EventService {
         viewership:   r.viewership,
         member_dec:        r.member_dec,
         image_rec:         r.image_rec,
-        audio_fingerprint: "--",
+        audio_fingerprint: r.audio_fingerprint,
       })),
       stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount },
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
