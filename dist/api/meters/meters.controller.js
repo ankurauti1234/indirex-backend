@@ -50,33 +50,39 @@ const getInstalledMeters = async (req, res) => {
         const qb = meterRepo
             .createQueryBuilder("meter")
             .leftJoinAndSelect("meter.assignedHousehold", "household")
+            .leftJoinAndSelect("meter.assignments", "assignment")
             .where("meter.isAssigned = :isAssigned", { isAssigned: true })
             .andWhere(IM_RANGE_CONDITION, IM_RANGE_PARAMS);
         if (search) {
             qb.andWhere("(meter.meterId ILIKE :search OR household.hhid ILIKE :search)", { search: `%${search}%` });
         }
         if (dateFrom) {
-            qb.andWhere("meter.updatedAt >= :dateFrom", {
+            qb.andWhere("assignment.assignedAt >= :dateFrom", {
                 dateFrom: new Date(dateFrom + "T00:00:00.000Z"),
             });
         }
         if (dateTo) {
-            qb.andWhere("meter.updatedAt <= :dateTo", {
+            qb.andWhere("assignment.assignedAt <= :dateTo", {
                 dateTo: new Date(dateTo + "T23:59:59.999Z"),
             });
         }
         const [meters, total] = await qb
-            .orderBy("meter.updatedAt", "DESC")
+            .orderBy("assignment.assignedAt", "DESC")
             .skip(skip)
             .take(limit)
             .getManyAndCount();
-        const result = meters.map((m) => ({
-            meterId: m.meterId,
-            assignedHouseholdId: m.assignedHousehold?.hhid ?? null,
-            meterType: m.meterType ?? null,
-            assetSerialNumber: m.assetSerialNumber ?? null,
-            installedAt: m.updatedAt,
-        }));
+        const result = meters.map((m) => {
+            // Pick the most recent assignment's assignedAt as the installed date
+            const latestAssignment = m.assignments
+                ?.sort((a, b) => new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime())[0];
+            return {
+                meterId: m.meterId,
+                assignedHouseholdId: m.assignedHousehold?.hhid ?? null,
+                meterType: m.meterType ?? null,
+                assetSerialNumber: m.assetSerialNumber ?? null,
+                installedAt: latestAssignment?.assignedAt ?? m.updatedAt,
+            };
+        });
         (0, response_1.sendSuccess)(res, {
             meters: result,
             pagination: {

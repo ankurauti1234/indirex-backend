@@ -734,9 +734,9 @@ export class EventService {
       date: string;
       region: string;
       connectivity: "Yes" | "No";
-      viewership: "Yes" | "No" | "No Data";
+      viewership: "Yes" | "No";
       member_dec: "Yes" | "No";
-      image_rec: "Yes" | "No";
+      image_rec: "Yes" | "No" | "No Data";
       audio_fingerprint: "Yes" | "No" | "No Data";
     }>;
     stats: { total: number; connectivity: number; viewership: number; member_dec: number; image_rec: number };
@@ -805,20 +805,12 @@ export class EventService {
         GROUP BY e.device_id
       ),
       view AS (
-        -- Viewership: type 29 = Yes, type 30 = No, neither = No Data (NULL)
-        SELECT
-          b.device_id,
-          CASE
-            WHEN bool_or(e.type = 29) THEN 'Yes'
-            WHEN bool_or(e.type = 30) THEN 'No'
-            ELSE NULL
-          END AS has_event
-        FROM base b
-        LEFT JOIN events e
-          ON e.device_id = b.device_id
-          AND e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type IN (29, 30)
-        GROUP BY b.device_id
+        -- Viewership: Yes if any type 29, 30, or 42 event exists; No otherwise
+        SELECT DISTINCT e.device_id, 'Yes' AS has_event
+        FROM events e
+        INNER JOIN base b ON b.device_id = e.device_id
+        WHERE e.timestamp >= $1 AND e.timestamp <= $2
+          AND e.type IN (29, 30, 42)
       ),
       audio_fp AS (
         -- Audio fingerprint: MATCHED = Yes, UNMATCHED = No, no type 42 = No Data (NULL)
@@ -845,12 +837,20 @@ export class EventService {
           AND e.type = 3
       ),
       image_rec AS (
-        -- Recognised image event = type 29
-        SELECT DISTINCT e.device_id, 'Yes' AS has_event
-        FROM events e
-        INNER JOIN base b ON b.device_id = e.device_id
-        WHERE e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type = 29
+        -- Recognised image: type 29 = Yes, type 30 = No, neither = No Data (NULL)
+        SELECT
+          b.device_id,
+          CASE
+            WHEN bool_or(e.type = 29) THEN 'Yes'
+            WHEN bool_or(e.type = 30) THEN 'No'
+            ELSE NULL
+          END AS has_event
+        FROM base b
+        LEFT JOIN events e
+          ON e.device_id = b.device_id
+          AND e.timestamp >= $1 AND e.timestamp <= $2
+          AND e.type IN (29, 30)
+        GROUP BY b.device_id
       ),
       combined AS (
         SELECT
@@ -858,9 +858,9 @@ export class EventService {
           b.hhid,
           b.region,
           COALESCE(c.has_event,   'No') AS connectivity,
-          COALESCE(v.has_event,   'No Data') AS viewership,
+          COALESCE(v.has_event,   'No') AS viewership,
           COALESCE(md.has_event,  'No') AS member_dec,
-          COALESCE(ir.has_event,  'No') AS image_rec,
+          COALESCE(ir.has_event,  'No Data') AS image_rec,
           COALESCE(af.fp_status,  'No Data') AS audio_fingerprint,
           COUNT(*) OVER() AS total_count
         FROM base b
