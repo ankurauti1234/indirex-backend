@@ -3,33 +3,57 @@ import { AppDataSource } from "../connection";
 import { User, UserRole } from "../entities/User";
 import { hashPassword } from "../../utils/encryption";
 
-export const seedAdmin = async () => {
+const EMAILS = [
+  "mahesh.bhorade@inditronics.com",
+  "manoj.patidar@inditronics.com",
+  "abhishek.gawade@inditronics.com",
+  "swapnil.gaikwad@inditronics.com",
+  "nikhil.kshirsagar@inditronics.com",
+  "aftab.momin@inditronics.com",
+  "akkay.datt@inditronics.com",
+  "vahan.nersesyan@inditronics.com",
+  "pranav.dalve@inditronics.com"
+];
+
+const DEFAULT_PASSWORD = "Pass@123";
+
+const toName = (email: string) =>
+  email
+    .split("@")[0]
+    .split(".")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+export const seedAdminsBatch = async () => {
   await AppDataSource.initialize();
 
   const repo = AppDataSource.getRepository(User);
-  const admin = await repo.findOneBy({ email: "akkay.datt@inditronics.com" });
+  const hash = await hashPassword(DEFAULT_PASSWORD);
 
-  if (admin) {
-    console.log("Admin already exists – skipping seed");
-    await AppDataSource.destroy();
-    return;
+  for (const email of EMAILS) {
+    const existing = await repo.findOneBy({ email });
+
+    if (existing) {
+      console.log(`Skipping ${email} – already exists`);
+      continue;
+    }
+
+    await repo.insert({
+      email,
+      password: hash,
+      name: toName(email),
+      role: UserRole.ADMIN,
+    });
+
+    console.log(`Seeded admin: ${email}`);
   }
 
-  const hash = await hashPassword("Akkay@123");
-  await repo.insert({
-    email: "akkay.datt@inditronics.com",
-    password: hash,
-    name: "Akkay Datt",
-    role: UserRole.VIEWER
-  });
-
-  console.log("Admin seeded");
   await AppDataSource.destroy();
 };
 
-// Allow direct execution: node dist/database/seeds/admin.js
+// Allow direct execution: node dist/database/seeds/admins-batch.js
 if (require.main === module) {
-  seedAdmin().catch((e) => {
+  seedAdminsBatch().catch((e) => {
     console.error(e);
     process.exit(1);
   });

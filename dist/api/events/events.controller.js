@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getDailyReport = exports.getWeeklyConnectivityReport = exports.getHouseholdVisualization = exports.getButtonPressedReport = exports.getConnectivityReport = exports.getViewership = exports.getLiveMonitoring = exports.getAlertsByDevice = exports.getAlerts = exports.getEventsByType = exports.getEvents = void 0;
+exports.getDailyReportRegions = exports.getDailyReport = exports.getWeeklyConnectivityReport = exports.getHouseholdVisualization = exports.getButtonPressedReport = exports.getConnectivityReport = exports.getViewership = exports.getLiveMonitoring = exports.getAlertsByDevice = exports.getAlerts = exports.getEventsByType = exports.getEvents = void 0;
 const response_1 = require("../../utils/response");
 const event_service_1 = require("../../services/events/event.service");
 const service = new event_service_1.EventService();
@@ -179,6 +179,7 @@ const getDailyReport = async (req, res) => {
             device_id: req.query.device_id?.toString(),
             hhid: req.query.hhid?.toString(),
             date: req.query.date?.toString(),
+            region: req.query.region?.toString(),
             page: req.query.page ? parseInt(req.query.page, 10) : 1,
             limit: req.query.limit ? parseInt(req.query.limit, 10) : 25,
         };
@@ -191,4 +192,15 @@ const getDailyReport = async (req, res) => {
     }
 };
 exports.getDailyReport = getDailyReport;
+const getDailyReportRegions = async (_req, res) => {
+    try {
+        const regions = await service.getDailyReportRegions();
+        (0, response_1.sendSuccess)(res, { regions }, "Daily report regions fetched");
+    }
+    catch (e) {
+        console.error("getDailyReportRegions error:", e);
+        res.status(500).json({ success: false, message: "Internal server error" });
+    }
+};
+exports.getDailyReportRegions = getDailyReportRegions;
 //# sourceMappingURL=events.controller.js.map

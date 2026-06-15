@@ -29,6 +29,7 @@ exports.viewershipQuerySchema = joi_1.default.object({
     device_id: joi_1.default.string().optional(),
     hhid: joi_1.default.string().optional(),
     date: joi_1.default.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(), // YYYY-MM-DD
+    region: joi_1.default.string().optional(),
     status: joi_1.default.string().valid("Yes", "No").optional(),
     page: joi_1.default.number().min(1).default(1),
     limit: joi_1.default.number().min(1).max(999999).default(25),

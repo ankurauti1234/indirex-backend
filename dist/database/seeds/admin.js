@@ -1,33 +1,51 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.seedAdmin = void 0;
+exports.seedAdminsBatch = void 0;
 require("reflect-metadata");
 const connection_1 = require("../connection");
 const User_1 = require("../entities/User");
 const encryption_1 = require("../../utils/encryption");
-const seedAdmin = async () => {
+const EMAILS = [
+    "mahesh.bhorade@inditronics.com",
+    "manoj.patidar@inditronics.com",
+    "abhishek.gawade@inditronics.com",
+    "swapnil.gaikwad@inditronics.com",
+    "nikhil.kshirsagar@inditronics.com",
+    "aftab.momin@inditronics.com",
+    "akkay.datt@inditronics.com",
+    "vahan.nersesyan@inditronics.com",
+    "pranav.dalve@inditronics.com"
+];
+const DEFAULT_PASSWORD = "Pass@123";
+const toName = (email) => email
+    .split("@")[0]
+    .split(".")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+const seedAdminsBatch = async () => {
     await connection_1.AppDataSource.initialize();
     const repo = connection_1.AppDataSource.getRepository(User_1.User);
-    const admin = await repo.findOneBy({ email: "akkay.datt@inditronics.com" });
-    if (admin) {
-        console.log("Admin already exists – skipping seed");
-        await connection_1.AppDataSource.destroy();
-        return;
+    const hash = await (0, encryption_1.hashPassword)(DEFAULT_PASSWORD);
+    for (const email of EMAILS) {
+        const existing = await repo.findOneBy({ email });
+        if (existing) {
+            console.log(`Skipping ${email} – already exists`);
+            continue;
+        }
+        await repo.insert({
+            email,
+            password: hash,
+            name: toName(email),
+            role: User_1.UserRole.ADMIN,
+        });
+        console.log(`Seeded admin: ${email}`);
     }
-    const hash = await (0, encryption_1.hashPassword)("Akkay@123");
-    await repo.insert({
-        email: "akkay.datt@inditronics.com",
-        password: hash,
-        name: "Akkay Datt",
-        role: User_1.UserRole.VIEWER
-    });
-    console.log("Admin seeded");
     await connection_1.AppDataSource.destroy();
 };
-exports.seedAdmin = seedAdmin;
-// Allow direct execution: node dist/database/seeds/admin.js
+exports.seedAdminsBatch = seedAdminsBatch;
+// Allow direct execution: node dist/database/seeds/admins-batch.js
 if (require.main === module) {
-    (0, exports.seedAdmin)().catch((e) => {
+    (0, exports.seedAdminsBatch)().catch((e) => {
         console.error(e);
         process.exit(1);
     });

@@ -742,7 +742,7 @@ export class EventService {
     stats: { total: number; connectivity: number; viewership: number; member_dec: number; image_rec: number };
     pagination: { page: number; limit: number; total: number; pages: number };
   }> {
-    const { device_id, hhid, date, page = 1, limit = 25 } = filters;
+    const { device_id, hhid, date, region, page = 1, limit = 25 } = filters;
     const take = limit;
     const skip = (page - 1) * take;
 
@@ -769,6 +769,10 @@ export class EventService {
     if (hhid) {
       params.push(`%${hhid}%`);
       conditions.push(`h.hhid ILIKE $${params.length}`);
+    }
+    if (region) {
+      params.push(region);
+      conditions.push(`h.region = $${params.length}`);
     }
 
     const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
@@ -900,6 +904,22 @@ export class EventService {
       stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount },
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
+  }
+
+  // Returns distinct regions from households linked to meters in the daily report range
+  async getDailyReportRegions(): Promise<string[]> {
+    const result = await AppDataSource.query(`
+      SELECT DISTINCT h.region
+      FROM meter_assignments ma
+      INNER JOIN meters m ON ma.meter_id = m.id
+      INNER JOIN households h ON ma.household_id = h.id
+      WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
+        AND h.region IS NOT NULL
+        AND h.region != ''
+        AND h.region != '—'
+      ORDER BY h.region ASC
+    `);
+    return result.map((r: any) => r.region).filter(Boolean);
   }
 
 }
