@@ -49,6 +49,7 @@ export interface ViewershipFilters {
   device_id?: string;
   hhid?: string;
   date?: string; // YYYY-MM-DD format
+  region?: string;
   status?: "Yes" | "No";
   page?: number;
   limit?: number;

@@ -8,7 +8,7 @@ const events_1 = require("./events"); // Add this
 const runAllSeeds = async () => {
     await connection_1.AppDataSource.initialize();
     console.log("Running all DB seeds…");
-    await (0, admin_1.seedAdmin)();
+    await (0, admin_1.seedAdminsBatch)();
     await (0, events_1.seedEvents)(); // Add this
     // await other seeds...
     console.log("All seeds completed");
