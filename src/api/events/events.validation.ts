@@ -26,7 +26,9 @@ export const liveMonitoringQuerySchema = Joi.object({
 export const viewershipQuerySchema = Joi.object({
   device_id: Joi.string().optional(),
   hhid: Joi.string().optional(),
-  date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(), // YYYY-MM-DD
+  date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateFrom: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateTo: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
   region: Joi.string().optional(),
   status: Joi.string().valid("Yes", "No").optional(),
   page: Joi.number().min(1).default(1),

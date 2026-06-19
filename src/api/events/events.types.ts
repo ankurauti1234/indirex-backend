@@ -45,10 +45,13 @@ export interface PaginatedLiveMonitoring {
 }
 
 // Viewership Types
+// Viewership Types
 export interface ViewershipFilters {
   device_id?: string;
   hhid?: string;
-  date?: string; // YYYY-MM-DD format
+  date?: string;       // single-day shortcut, kept for backward compatibility
+  dateFrom?: string;   // YYYY-MM-DD
+  dateTo?: string;     // YYYY-MM-DD
   region?: string;
   status?: "Yes" | "No";
   page?: number;
