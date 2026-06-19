@@ -117,3 +117,103 @@ export const getInstalledMeters = async (req: Request, res: Response) => {
     sendError(res, e.message, 500);
   }
 };
+
+export const unassignMeter = async (req: Request, res: Response) => {
+  const { hhid, meterId } = req.body;
+ 
+  if (!hhid || !meterId) {
+    return res.status(400).json({
+      success: false,
+      error: "Both HHID and Meter ID are required.",
+    });
+  }
+ 
+  const queryRunner = AppDataSource.createQueryRunner();
+  await queryRunner.connect();
+ 
+  try {
+    // 1. Resolve household UUID
+    const household = await queryRunner.query(
+      `SELECT id FROM households WHERE hhid = $1`,
+      [hhid]
+    );
+    if (household.length === 0) {
+      await queryRunner.release();
+      return res.status(404).json({
+        success: false,
+        error: `Household with HHID "${hhid}" not found.`,
+      });
+    }
+    const householdId: string = household[0].id;
+ 
+    // 2. Resolve meter UUID
+    const meter = await queryRunner.query(
+      `SELECT id FROM meters WHERE meter_id = $1`,
+      [meterId]
+    );
+    if (meter.length === 0) {
+      await queryRunner.release();
+      return res.status(404).json({
+        success: false,
+        error: `Meter with Meter ID "${meterId}" not found.`,
+      });
+    }
+    const meterUuid: string = meter[0].id;
+ 
+    // 3. Atomic transaction
+    await queryRunner.startTransaction();
+    try {
+      const assignment = await queryRunner.query(
+        `SELECT assigned_at FROM meter_assignments WHERE meter_id = $1 AND household_id = $2`,
+        [meterUuid, householdId]
+      );
+      const assignedAt = assignment[0]?.assigned_at ?? null;
+ 
+      await queryRunner.query(
+        `DELETE FROM meter_assignments WHERE meter_id = $1 AND household_id = $2`,
+        [meterUuid, householdId]
+      );
+ 
+      await queryRunner.query(
+        `UPDATE meters SET assigned_household_id = NULL, is_assigned = FALSE, updated_at = NOW() WHERE id = $1`,
+        [meterUuid]
+      );
+ 
+      await queryRunner.query(
+        `INSERT INTO household_meter_history (household_id, meter_id, assigned_at, decommissioned_at)
+         VALUES ($1, $2, COALESCE($3, NOW()), NOW())`,
+        [householdId, meterUuid, assignedAt]
+      );
+ 
+      await queryRunner.commitTransaction();
+    } catch (txErr) {
+      await queryRunner.rollbackTransaction();
+      throw txErr;
+    }
+ 
+    // 4. Return updated meter state
+    const verify = await queryRunner.query(
+      `SELECT meter_id, assigned_household_id, is_assigned, updated_at FROM meters WHERE meter_id = $1`,
+      [meterId]
+    );
+    const updatedMeter = verify[0];
+ 
+    await queryRunner.release();
+ 
+    return res.json({
+      success: true,
+      message: `Meter ${meterId} successfully unassigned from household ${hhid} and history recorded.`,
+      meter: {
+        meterId: updatedMeter.meter_id,
+        assignedHouseholdId: updatedMeter.assigned_household_id,
+        isAssigned: updatedMeter.is_assigned,
+        updatedAt: updatedMeter.updated_at,
+      },
+    });
+  } catch (err: unknown) {
+    if (!queryRunner.isReleased) await queryRunner.release();
+    console.error("unassignMeter error:", err);
+    const message = err instanceof Error ? err.message : "An unexpected database error occurred.";
+    return res.status(500).json({ success: false, error: message });
+  }
+};

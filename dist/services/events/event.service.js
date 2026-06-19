@@ -611,21 +611,33 @@ class EventService {
     // ── Daily Combined Report ────────────────────────────────────────────────────
     // Merges connectivity, viewership, and member declaration (type 23) per meter
     // for a given date. Returns one row per meter with Yes/No for each dimension.
+    // ── Daily Combined Report ────────────────────────────────────────────────────
+    // Merges connectivity, viewership, member declaration, image recognition and
+    // audio fingerprint status per meter, for a date OR a date range. Returns one
+    // row per meter per day in the requested range.
     async getDailyReport(filters = {}) {
-        const { device_id, hhid, date, region, page = 1, limit = 25 } = filters;
+        const { device_id, hhid, date, dateFrom, dateTo, region, page = 1, limit = 25 } = filters;
         const take = limit;
         const skip = (page - 1) * take;
-        const targetDateStr = date || new Date().toISOString().split("T")[0];
-        const baseDate = new Date(`${targetDateStr}T00:00:00Z`);
-        const startDate = new Date(baseDate);
+        // Resolve the date range. `date` is a single-day shortcut kept for
+        // backward compatibility; dateFrom/dateTo take precedence when given.
+        const todayStr = new Date().toISOString().split("T")[0];
+        const rangeStartStr = dateFrom || date || todayStr;
+        const rangeEndStr = dateTo || date || todayStr;
+        // Overall UTC window spanning the whole requested range (each "day" runs
+        // 22:00 UTC the previous day → 21:59:59.999 UTC the target day, so the
+        // windows for consecutive days are contiguous with no gap/overlap).
+        const startBase = new Date(`${rangeStartStr}T00:00:00Z`);
+        const startDate = new Date(startBase);
         startDate.setUTCDate(startDate.getUTCDate() - 1);
         startDate.setUTCHours(22, 0, 0, 0);
-        const endDate = new Date(baseDate);
+        const endBase = new Date(`${rangeEndStr}T00:00:00Z`);
+        const endDate = new Date(endBase);
         endDate.setUTCHours(21, 59, 59, 999);
         const startTs = Math.floor(startDate.getTime() / 1000);
         const endTs = Math.floor(endDate.getTime() / 1000);
         const conditions = [];
-        const params = [startTs, endTs];
+        const params = [];
         if (device_id) {
             params.push(`%${device_id}%`);
             conditions.push(`m.meter_id ILIKE $${params.length}`);
@@ -639,9 +651,21 @@ class EventService {
             conditions.push(`h.region = $${params.length}`);
         }
         const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+        params.push(rangeStartStr);
+        const rangeStartIdx = params.length;
+        params.push(rangeEndStr);
+        const rangeEndIdx = params.length;
+        params.push(startTs);
+        const startTsIdx = params.length;
+        params.push(endTs);
+        const endTsIdx = params.length;
         params.push(take, skip);
         const limitIdx = params.length - 1;
         const offsetIdx = params.length;
+        // Single pass over `events`: filter once by the overall timestamp range,
+        // bucket each event into its report-day via SQL, and aggregate all five
+        // metrics in one GROUP BY. This avoids the previous N-days × N-meters ×
+        // 5-joins blowup and stays fast no matter how wide the date range is.
         const query = `
       WITH latest_assignments AS (
         SELECT DISTINCT ON (ma.meter_id)
@@ -662,82 +686,61 @@ class EventService {
         INNER JOIN households h ON la.household_id = h.id
         ${whereClause}
       ),
-      conn AS (
-        SELECT e.device_id, 'Yes' AS has_event
-        FROM events e
-        INNER JOIN base b ON b.device_id = e.device_id
-        WHERE e.timestamp >= $1 AND e.timestamp <= $2
-        GROUP BY e.device_id
+      days AS (
+        SELECT generate_series(
+          $${rangeStartIdx}::date,
+          $${rangeEndIdx}::date,
+          interval '1 day'
+        )::date AS report_date
       ),
-      view AS (
-        -- Viewership: Yes if any type 29, 30, or 42 event exists; No otherwise
-        SELECT DISTINCT e.device_id, 'Yes' AS has_event
-        FROM events e
-        INNER JOIN base b ON b.device_id = e.device_id
-        WHERE e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type IN (29, 30, 42)
-      ),
-      audio_fp AS (
-        -- Audio fingerprint: MATCHED = Yes, UNMATCHED = No, no type 42 = No Data (NULL)
-        SELECT
-          b.device_id,
-          CASE
-            WHEN bool_or(e.type = 42 AND (e.details->>'status') = 'MATCHED') THEN 'Yes'
-            WHEN bool_or(e.type = 42) THEN 'No'
-            ELSE NULL
-          END AS fp_status
+      base_days AS (
+        SELECT b.device_id, b.hhid, b.region, d.report_date
         FROM base b
-        LEFT JOIN events e
-          ON e.device_id = b.device_id
-          AND e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type = 42
-        GROUP BY b.device_id
+        CROSS JOIN days d
       ),
-      memdec AS (
-        -- Member declaration = any type 3 event exists in the window (matches button pressed report logic)
-        SELECT DISTINCT e.device_id, 'Yes' AS has_event
+      event_agg AS (
+        SELECT
+          e.device_id,
+          ((to_timestamp(e.timestamp + 7200) AT TIME ZONE 'UTC')::date) AS report_date,
+          bool_or(TRUE)                                                        AS has_any,
+          bool_or(e.type IN (29, 30, 42))                                      AS has_view,
+          bool_or(e.type = 3)                                                  AS has_memdec,
+          bool_or(e.type = 29)                                                 AS has_img_yes,
+          bool_or(e.type = 30)                                                 AS has_img_no,
+          bool_or(e.type = 42)                                                 AS has_fp,
+          bool_or(e.type = 42 AND (e.details->>'status') = 'MATCHED')          AS has_fp_matched
         FROM events e
         INNER JOIN base b ON b.device_id = e.device_id
-        WHERE e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type = 3
-      ),
-      image_rec AS (
-        -- Recognised image: type 29 = Yes, type 30 = No, neither = No Data (NULL)
-        SELECT
-          b.device_id,
-          CASE
-            WHEN bool_or(e.type = 29) THEN 'Yes'
-            WHEN bool_or(e.type = 30) THEN 'No'
-            ELSE NULL
-          END AS has_event
-        FROM base b
-        LEFT JOIN events e
-          ON e.device_id = b.device_id
-          AND e.timestamp >= $1 AND e.timestamp <= $2
-          AND e.type IN (29, 30)
-        GROUP BY b.device_id
+        WHERE e.timestamp >= $${startTsIdx} AND e.timestamp <= $${endTsIdx}
+        GROUP BY e.device_id, report_date
       ),
       combined AS (
         SELECT
-          b.device_id,
-          b.hhid,
-          b.region,
-          COALESCE(c.has_event,   'No') AS connectivity,
-          COALESCE(v.has_event,   'No') AS viewership,
-          COALESCE(md.has_event,  'No') AS member_dec,
-          COALESCE(ir.has_event,  'No Data') AS image_rec,
-          COALESCE(af.fp_status,  'No Data') AS audio_fingerprint,
+          bd.device_id,
+          bd.hhid,
+          bd.region,
+          bd.report_date::text AS report_date,
+          CASE WHEN ea.has_any   THEN 'Yes' ELSE 'No' END AS connectivity,
+          CASE WHEN ea.has_view  THEN 'Yes' ELSE 'No' END AS viewership,
+          CASE WHEN ea.has_memdec THEN 'Yes' ELSE 'No' END AS member_dec,
+          CASE
+            WHEN ea.has_img_yes THEN 'Yes'
+            WHEN ea.has_img_no  THEN 'No'
+            ELSE 'No Data'
+          END AS image_rec,
+          CASE
+            WHEN ea.has_fp_matched THEN 'Yes'
+            WHEN ea.has_fp         THEN 'No'
+            ELSE 'No Data'
+          END AS audio_fingerprint,
           COUNT(*) OVER() AS total_count
-        FROM base b
-        LEFT JOIN conn      c  ON c.device_id  = b.device_id
-        LEFT JOIN view      v  ON v.device_id  = b.device_id
-        LEFT JOIN memdec    md ON md.device_id = b.device_id
-        LEFT JOIN image_rec ir ON ir.device_id = b.device_id
-        LEFT JOIN audio_fp  af ON af.device_id = b.device_id
+        FROM base_days bd
+        LEFT JOIN event_agg ea
+          ON ea.device_id = bd.device_id AND ea.report_date = bd.report_date
       )
       SELECT *
       FROM combined
-      ORDER BY device_id
+      ORDER BY report_date DESC, device_id
       LIMIT  $${limitIdx}
       OFFSET $${offsetIdx}
     `;
@@ -751,7 +754,7 @@ class EventService {
             data: rows.map((r) => ({
                 device_id: r.device_id,
                 hhid: r.hhid,
-                date: targetDateStr,
+                date: r.report_date, // ← simplified, was the Date/toISOString logic
                 region: r.region,
                 connectivity: r.connectivity,
                 viewership: r.viewership,
