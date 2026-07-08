@@ -3,57 +3,33 @@ import { AppDataSource } from "../connection";
 import { User, UserRole } from "../entities/User";
 import { hashPassword } from "../../utils/encryption";
 
-const EMAILS = [
-  "mahesh.bhorade@inditronics.com",
-  "manoj.patidar@inditronics.com",
-  "abhishek.gawade@inditronics.com",
-  "swapnil.gaikwad@inditronics.com",
-  "nikhil.kshirsagar@inditronics.com",
-  "aftab.momin@inditronics.com",
-  "akkay.datt@inditronics.com",
-  "vahan.nersesyan@inditronics.com",
-  "pranav.dalve@inditronics.com"
-];
-
-const DEFAULT_PASSWORD = "Pass@123";
-
-const toName = (email: string) =>
-  email
-    .split("@")[0]
-    .split(".")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-
-export const seedAdminsBatch = async () => {
+export const seedAdmin = async () => {
   await AppDataSource.initialize();
 
   const repo = AppDataSource.getRepository(User);
-  const hash = await hashPassword(DEFAULT_PASSWORD);
+  const admin = await repo.findOneBy({ email: "julia.aslanyan@inditronics.com" });
 
-  for (const email of EMAILS) {
-    const existing = await repo.findOneBy({ email });
-
-    if (existing) {
-      console.log(`Skipping ${email} – already exists`);
-      continue;
-    }
-
-    await repo.insert({
-      email,
-      password: hash,
-      name: toName(email),
-      role: UserRole.ADMIN,
-    });
-
-    console.log(`Seeded admin: ${email}`);
+  if (admin) {
+    console.log("Admin already exists – skipping seed");
+    await AppDataSource.destroy();
+    return;
   }
 
+  const hash = await hashPassword("Pass@123");
+  await repo.insert({
+    email: "julia.aslanyan@inditronics.com",
+    password: hash,
+    name: "Julia Aslanyan",
+    role: UserRole.DEVELOPER
+  });
+
+  console.log("Admin seeded");
   await AppDataSource.destroy();
 };
 
-// Allow direct execution: node dist/database/seeds/admins-batch.js
+// Allow direct execution: node dist/database/seeds/admin.js
 if (require.main === module) {
-  seedAdminsBatch().catch((e) => {
+  seedAdmin().catch((e) => {
     console.error(e);
     process.exit(1);
   });

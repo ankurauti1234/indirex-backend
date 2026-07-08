@@ -1,13 +1,13 @@
 import "reflect-metadata";
 import { AppDataSource } from "../connection";
-import { seedAdminsBatch } from "./admin";
+import { seedAdmin } from "./admin";
 import { seedEvents } from "./events"; // Add this
 
 export const runAllSeeds = async () => {
   await AppDataSource.initialize();
   console.log("Running all DB seeds…");
 
-  await seedAdminsBatch();
+  await seedAdmin();
   await seedEvents(); // Add this
   // await other seeds...
 

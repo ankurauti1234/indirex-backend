@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.weeklyConnectivityQuerySchema = exports.householdVisualizationQuerySchema = exports.viewershipQuerySchema = exports.liveMonitoringQuerySchema = exports.eventTypeQuerySchema = exports.eventsQuerySchema = void 0;
+exports.weeklyViewershipQuerySchema = exports.weeklyConnectivityQuerySchema = exports.householdVisualizationQuerySchema = exports.viewershipQuerySchema = exports.liveMonitoringQuerySchema = exports.eventTypeQuerySchema = exports.eventsQuerySchema = void 0;
 const joi_1 = __importDefault(require("joi"));
 exports.eventsQuerySchema = joi_1.default.object({
     device_id: joi_1.default.string().optional(),
@@ -45,9 +45,15 @@ exports.householdVisualizationQuerySchema = joi_1.default.object({
 exports.weeklyConnectivityQuerySchema = joi_1.default.object({
     device_id: joi_1.default.string().optional(),
     hhid: joi_1.default.string().optional(),
-    week_start: joi_1.default.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(), // YYYY-MM-DD
+    region: joi_1.default.string().optional(),
+    week_start: joi_1.default.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
     status: joi_1.default.string().valid("connected", "disconnected", "partial").optional(),
     page: joi_1.default.number().min(1).default(1),
     limit: joi_1.default.number().min(1).max(999999).default(25),
+});
+exports.weeklyViewershipQuerySchema = exports.weeklyConnectivityQuerySchema.keys({
+    metric: joi_1.default.string().valid("image", "audio").default("image"),
+    region: joi_1.default.string().optional(),
+    status: joi_1.default.string().valid("connected", "disconnected", "partial", "no_data").optional(),
 });
 //# sourceMappingURL=events.validation.js.map

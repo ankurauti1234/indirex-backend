@@ -11,6 +11,8 @@ import {
   getButtonPressedReport,
   getHouseholdVisualization,
   getWeeklyConnectivityReport,
+  getWeeklyButtonPressedReport,
+  getWeeklyViewershipReport,
   getDailyReport,
   getDailyReportRegions
 } from "./events.controller";
@@ -23,6 +25,7 @@ import {
   viewershipQuerySchema,
   householdVisualizationQuerySchema,
   weeklyConnectivityQuerySchema,
+  weeklyViewershipQuerySchema,
 } from "./events.validation";
 import Joi from "joi";
 import { EventService } from "../../services/events/event.service";
@@ -46,7 +49,7 @@ const restrictViewer = (emptyData: any) => (req: any, res: any, next: any) => {
 router.use(protect);
 
 // === Event Mapping CRUD ===
-router.use("/mapping", authorize(UserRole.ADMIN, UserRole.DEVELOPER), eventMappingRouter);
+router.use("/mapping", authorize(UserRole.ADMIN, UserRole.DEVELOPER, UserRole.INSTALLER, UserRole.SUPPORT), eventMappingRouter);
 
 // === Events ===
 router.get("/",
@@ -131,6 +134,35 @@ router.get(
 router.use("/meter-channels",
   restrictViewer({ channels: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }),
   meterChannelsRouter
+);
+
+// === Weekly Button Pressed Report (Type 3 & 4 events) ===
+router.get(
+  "/weekly-button-pressed",
+  validationMiddleware({ query: weeklyConnectivityQuerySchema }),
+  restrictViewer({
+    data: [],
+    week_start: "",
+    week_end: "",
+    stats: { total_meters: 0, fully_connected: 0, partially_connected: 0, not_connected: 0, avg_connectivity_rate: 0 },
+    pagination: { page: 1, limit: 25, total: 0, pages: 0 },
+  }),
+  getWeeklyButtonPressedReport
+);
+
+// === Weekly Viewership Report (Image Recognition / Audio Fingerprint) ===
+router.get(
+  "/weekly-viewership",
+  validationMiddleware({ query: weeklyViewershipQuerySchema }),
+  restrictViewer({
+    data: [],
+    week_start: "",
+    week_end: "",
+    metric: "image",
+    stats: { total_meters: 0, fully_matched: 0, partially_matched: 0, not_matched: 0, avg_match_rate: 0 },
+    pagination: { page: 1, limit: 25, total: 0, pages: 0 },
+  }),
+  getWeeklyViewershipReport
 );
 
 router.get("/daily-report/regions", getDailyReportRegions);

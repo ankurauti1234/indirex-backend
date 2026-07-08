@@ -21,6 +21,8 @@ var UserRole;
     UserRole["ADMIN"] = "admin";
     UserRole["DEVELOPER"] = "developer";
     UserRole["VIEWER"] = "viewer";
+    UserRole["INSTALLER"] = "installer";
+    UserRole["SUPPORT"] = "support";
 })(UserRole || (exports.UserRole = UserRole = {}));
 let User = class User {
     async hashPassword() {

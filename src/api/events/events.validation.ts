@@ -45,8 +45,15 @@ export const householdVisualizationQuerySchema = Joi.object({
 export const weeklyConnectivityQuerySchema = Joi.object({
   device_id: Joi.string().optional(),
   hhid: Joi.string().optional(),
-  week_start: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(), // YYYY-MM-DD
+  region: Joi.string().optional(),
+  week_start: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
   status: Joi.string().valid("connected", "disconnected", "partial").optional(),
   page: Joi.number().min(1).default(1),
   limit: Joi.number().min(1).max(999999).default(25),
+});
+
+export const weeklyViewershipQuerySchema = weeklyConnectivityQuerySchema.keys({
+  metric: Joi.string().valid("image", "audio").default("image"),
+  region: Joi.string().optional(),
+  status: Joi.string().valid("connected", "disconnected", "partial", "no_data").optional(),
 });
