@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getDailyReportRegions = exports.getDailyReport = exports.getWeeklyConnectivityReport = exports.getHouseholdVisualization = exports.getButtonPressedReport = exports.getConnectivityReport = exports.getViewership = exports.getLiveMonitoring = exports.getAlertsByDevice = exports.getAlerts = exports.getEventsByType = exports.getEvents = void 0;
+exports.getDailyReportRegions = exports.getDailyReport = exports.getWeeklyViewershipReport = exports.getWeeklyButtonPressedReport = exports.getWeeklyConnectivityReport = exports.getHouseholdVisualization = exports.getButtonPressedReport = exports.getConnectivityReport = exports.getViewership = exports.getLiveMonitoring = exports.getAlertsByDevice = exports.getAlerts = exports.getEventsByType = exports.getEvents = void 0;
 const response_1 = require("../../utils/response");
 const event_service_1 = require("../../services/events/event.service");
 const service = new event_service_1.EventService();
@@ -159,6 +159,7 @@ const getWeeklyConnectivityReport = async (req, res) => {
         const filters = {
             device_id: req.query.device_id?.toString(),
             hhid: req.query.hhid?.toString(),
+            region: req.query.region?.toString(),
             week_start: req.query.week_start?.toString(),
             status: req.query.status?.toString(),
             page: req.query.page ? parseInt(req.query.page, 10) : 1,
@@ -173,6 +174,52 @@ const getWeeklyConnectivityReport = async (req, res) => {
     }
 };
 exports.getWeeklyConnectivityReport = getWeeklyConnectivityReport;
+const getWeeklyButtonPressedReport = async (req, res) => {
+    try {
+        const filters = {
+            device_id: req.query.device_id?.toString(),
+            hhid: req.query.hhid?.toString(),
+            region: req.query.region?.toString(),
+            week_start: req.query.week_start?.toString(),
+            status: req.query.status?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 25,
+        };
+        const data = await service.getWeeklyButtonPressedReport(filters);
+        (0, response_1.sendSuccess)(res, data, "Weekly button pressed report retrieved");
+    }
+    catch (e) {
+        console.error("getWeeklyButtonPressedReport error:", e);
+        (0, response_1.sendSuccess)(res, { data: [], stats: { total_meters: 0, fully_connected: 0, partially_connected: 0, not_connected: 0, avg_connectivity_rate: 0 }, pagination: { page: 1, limit: 25, total: 0, pages: 0 } }, "Error retrieving weekly button pressed report");
+    }
+};
+exports.getWeeklyButtonPressedReport = getWeeklyButtonPressedReport;
+const getWeeklyViewershipReport = async (req, res) => {
+    try {
+        const filters = {
+            device_id: req.query.device_id?.toString(),
+            hhid: req.query.hhid?.toString(),
+            region: req.query.region?.toString(),
+            week_start: req.query.week_start?.toString(),
+            metric: req.query.metric?.toString() || "image",
+            status: req.query.status?.toString(),
+            page: req.query.page ? parseInt(req.query.page, 10) : 1,
+            limit: req.query.limit ? parseInt(req.query.limit, 10) : 25,
+        };
+        const data = await service.getWeeklyViewershipReport(filters);
+        (0, response_1.sendSuccess)(res, data, "Weekly viewership report retrieved");
+    }
+    catch (e) {
+        console.error("getWeeklyViewershipReport error:", e);
+        (0, response_1.sendSuccess)(res, {
+            data: [],
+            metric: req.query.metric || "image",
+            stats: { total_meters: 0, fully_matched: 0, partially_matched: 0, not_matched: 0, avg_match_rate: 0 },
+            pagination: { page: 1, limit: 25, total: 0, pages: 0 },
+        }, "Error retrieving weekly viewership report");
+    }
+};
+exports.getWeeklyViewershipReport = getWeeklyViewershipReport;
 const getDailyReport = async (req, res) => {
     try {
         const filters = {

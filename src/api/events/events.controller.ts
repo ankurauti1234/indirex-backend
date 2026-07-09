@@ -156,6 +156,7 @@ export const getWeeklyConnectivityReport = async (req: Request, res: Response) =
     const filters = {
       device_id: req.query.device_id?.toString(),
       hhid: req.query.hhid?.toString(),
+      region: req.query.region?.toString(),
       week_start: req.query.week_start?.toString(),
       status: req.query.status?.toString() as any,
       page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
@@ -169,6 +170,58 @@ export const getWeeklyConnectivityReport = async (req: Request, res: Response) =
       res,
       { data: [], stats: { total_meters: 0, fully_connected: 0, partially_connected: 0, not_connected: 0, avg_connectivity_rate: 0 }, pagination: { page: 1, limit: 25, total: 0, pages: 0 } },
       "Error retrieving weekly connectivity report"
+    );
+  }
+};
+
+export const getWeeklyButtonPressedReport = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      device_id: req.query.device_id?.toString(),
+      hhid: req.query.hhid?.toString(),
+      region: req.query.region?.toString(),
+      week_start: req.query.week_start?.toString(),
+      status: req.query.status?.toString() as any,
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
+    };
+    const data = await service.getWeeklyButtonPressedReport(filters);
+    sendSuccess(res, data, "Weekly button pressed report retrieved");
+  } catch (e: any) {
+    console.error("getWeeklyButtonPressedReport error:", e);
+    sendSuccess(
+      res,
+      { data: [], stats: { total_meters: 0, fully_connected: 0, partially_connected: 0, not_connected: 0, avg_connectivity_rate: 0 }, pagination: { page: 1, limit: 25, total: 0, pages: 0 } },
+      "Error retrieving weekly button pressed report"
+    );
+  }
+};
+
+export const getWeeklyViewershipReport = async (req: Request, res: Response) => {
+  try {
+    const filters = {
+      device_id: req.query.device_id?.toString(),
+      hhid: req.query.hhid?.toString(),
+      region: req.query.region?.toString(),
+      week_start: req.query.week_start?.toString(),
+      metric: (req.query.metric?.toString() as any) || "image",
+      status: req.query.status?.toString() as any,
+      page: req.query.page ? parseInt(req.query.page as string, 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 25,
+    };
+    const data = await service.getWeeklyViewershipReport(filters);
+    sendSuccess(res, data, "Weekly viewership report retrieved");
+  } catch (e: any) {
+    console.error("getWeeklyViewershipReport error:", e);
+    sendSuccess(
+      res,
+      {
+        data: [],
+        metric: (req.query.metric as string) || "image",
+        stats: { total_meters: 0, fully_matched: 0, partially_matched: 0, not_matched: 0, avg_match_rate: 0 },
+        pagination: { page: 1, limit: 25, total: 0, pages: 0 },
+      },
+      "Error retrieving weekly viewership report"
     );
   }
 };

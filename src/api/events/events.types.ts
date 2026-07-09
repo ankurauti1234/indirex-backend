@@ -156,7 +156,8 @@ export interface PaginatedHouseholdVisualization {
 export interface WeeklyConnectivityFilters {
   device_id?: string;
   hhid?: string;
-  week_start?: string; // YYYY-MM-DD (Monday of the desired week)
+  region?: string;
+  week_start?: string;
   status?: "connected" | "disconnected" | "partial";
   page?: number;
   limit?: number;
@@ -171,6 +172,7 @@ export interface DayConnectivity {
 export interface WeeklyConnectivityItem {
   device_id: string;
   hhid: string;
+  region: string;
   days: DayConnectivity[];
   connected_days: number;
   total_days: number;
@@ -187,6 +189,102 @@ export interface PaginatedWeeklyConnectivity {
     partially_connected: number;
     not_connected: number;
     avg_connectivity_rate: number;
+  };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+// ─── Weekly Button Pressed Report (Type 3 & 4 events) ────────────────────────
+
+export interface WeeklyButtonPressedFilters {
+  device_id?: string;
+  hhid?: string;
+  region?: string;
+  week_start?: string;
+  status?: "connected" | "disconnected" | "partial";
+  page?: number;
+  limit?: number;
+}
+
+export interface WeeklyButtonPressedItem {
+  device_id: string;
+  hhid: string;
+  region: string;
+  days: DayConnectivity[];
+  connected_days: number;
+  total_days: number;
+  connectivity_rate: number;
+}
+
+export interface PaginatedWeeklyButtonPressed {
+  data: WeeklyButtonPressedItem[];
+  week_start: string;
+  week_end: string;
+  stats: {
+    total_meters: number;
+    fully_connected: number;
+    partially_connected: number;
+    not_connected: number;
+    avg_connectivity_rate: number;
+  };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+// ─── Weekly Viewership Report (Image Recognition & Audio Fingerprint) ────────
+// Unlike connectivity/button-pressed, each day is a 3-state value: a device
+// can be "Yes" (recognized/matched), "No" (event received but not matched),
+// or "No Data" (no relevant event at all that day).
+
+export type ViewershipMetric = "image" | "audio";
+
+export interface WeeklyViewershipFilters {
+  device_id?: string;
+  hhid?: string;
+  region?: string;
+  week_start?: string; // YYYY-MM-DD (Monday of the desired week)
+  metric?: ViewershipMetric; // defaults to "image"
+  status?: "connected" | "disconnected" | "partial" | "no_data"; // no_data = audio only: all 7 days had no Type 42 event
+  page?: number;
+  limit?: number;
+}
+
+export interface DayViewership {
+  date: string;
+  day: string;
+  status: "Yes" | "No" | "No Data";
+}
+
+export interface WeeklyViewershipItem {
+  device_id: string;
+  hhid: string;
+  region: string;
+  days: DayViewership[];
+  matched_days: number;
+  no_data_days: number;
+  total_days: number;
+  match_rate: number;
+}
+
+export interface PaginatedWeeklyViewership {
+  data: WeeklyViewershipItem[];
+  week_start: string;
+  week_end: string;
+  metric: ViewershipMetric;
+  stats: {
+    total_meters: number;
+    fully_matched: number;
+    partially_matched: number;
+    not_matched: number;
+    avg_match_rate: number;
   };
   pagination: {
     page: number;

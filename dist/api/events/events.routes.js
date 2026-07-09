@@ -27,7 +27,7 @@ const restrictViewer = (emptyData) => (req, res, next) => {
 // Protect all routes
 router.use(auth_middleware_1.protect);
 // === Event Mapping CRUD ===
-router.use("/mapping", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER), event_mapping_routes_1.default);
+router.use("/mapping", (0, role_middleware_1.authorize)(User_1.UserRole.ADMIN, User_1.UserRole.DEVELOPER, User_1.UserRole.INSTALLER, User_1.UserRole.SUPPORT), event_mapping_routes_1.default);
 // === Events ===
 router.get("/", (0, validation_middleware_1.validationMiddleware)({ query: events_validation_1.eventsQuerySchema }), restrictViewer({ events: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), events_controller_1.getEvents);
 router.get("/type/:type", (0, validation_middleware_1.validationMiddleware)({
@@ -54,6 +54,23 @@ router.get("/weekly-connectivity", (0, validation_middleware_1.validationMiddlew
     pagination: { page: 1, limit: 25, total: 0, pages: 0 },
 }), events_controller_1.getWeeklyConnectivityReport);
 router.use("/meter-channels", restrictViewer({ channels: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), meter_channels_routes_1.default);
+// === Weekly Button Pressed Report (Type 3 & 4 events) ===
+router.get("/weekly-button-pressed", (0, validation_middleware_1.validationMiddleware)({ query: events_validation_1.weeklyConnectivityQuerySchema }), restrictViewer({
+    data: [],
+    week_start: "",
+    week_end: "",
+    stats: { total_meters: 0, fully_connected: 0, partially_connected: 0, not_connected: 0, avg_connectivity_rate: 0 },
+    pagination: { page: 1, limit: 25, total: 0, pages: 0 },
+}), events_controller_1.getWeeklyButtonPressedReport);
+// === Weekly Viewership Report (Image Recognition / Audio Fingerprint) ===
+router.get("/weekly-viewership", (0, validation_middleware_1.validationMiddleware)({ query: events_validation_1.weeklyViewershipQuerySchema }), restrictViewer({
+    data: [],
+    week_start: "",
+    week_end: "",
+    metric: "image",
+    stats: { total_meters: 0, fully_matched: 0, partially_matched: 0, not_matched: 0, avg_match_rate: 0 },
+    pagination: { page: 1, limit: 25, total: 0, pages: 0 },
+}), events_controller_1.getWeeklyViewershipReport);
 router.get("/daily-report/regions", events_controller_1.getDailyReportRegions);
 router.get("/daily-report", (0, validation_middleware_1.validationMiddleware)({ query: events_validation_1.viewershipQuerySchema }), events_controller_1.getDailyReport);
 router.use("/meter-channels", restrictViewer({ channels: [], pagination: { page: 1, limit: 10, total: 0, pages: 0 } }), meter_channels_routes_1.default);
