@@ -581,26 +581,30 @@ export class EventService {
     const { device_id, hhid, week_start, status, page = 1, limit = 25 } = filters;
     const region = (filters as any).region as string | undefined;
 
+    // week_start is the first day of the 7-day window — no Monday-snapping.
+    // Default: 6 days ago so the window covers last 7 days ending yesterday.
     const resolveWeekStart = (): Date => {
-      const base = week_start ? new Date(`${week_start}T00:00:00Z`) : new Date();
-      const day = base.getUTCDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      const monday = new Date(base);
-      monday.setUTCDate(base.getUTCDate() + diff);
-      monday.setUTCHours(0, 0, 0, 0);
-      return monday;
+      if (week_start) {
+        const d = new Date(`${week_start}T00:00:00Z`);
+        d.setUTCHours(0, 0, 0, 0);
+        return d;
+      }
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() - 6);
+      d.setUTCHours(0, 0, 0, 0);
+      return d;
     };
 
     const weekStart = resolveWeekStart();
     const weekEnd = new Date(weekStart);
     weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
 
-    const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const daySlots: Array<{ dateStr: string; label: string }> = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(weekStart);
       d.setUTCDate(weekStart.getUTCDate() + i);
-      daySlots.push({ dateStr: d.toISOString().split("T")[0], label: DAY_LABELS[i] });
+      const dayAbbr = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getUTCDay()];
+      daySlots.push({ dateStr: d.toISOString().split("T")[0], label: dayAbbr });
     }
 
     const dayWindows = daySlots.map(({ dateStr }) => {
@@ -783,26 +787,30 @@ export class EventService {
       limit = 25,
     } = filters;
 
+    // week_start is the first day of the 7-day window — no Monday-snapping.
+    // Default: 6 days ago so the window covers last 7 days ending yesterday.
     const resolveWeekStart = (): Date => {
-      const base = week_start ? new Date(`${week_start}T00:00:00Z`) : new Date();
-      const day = base.getUTCDay();
-      const diff = day === 0 ? -6 : 1 - day;
-      const monday = new Date(base);
-      monday.setUTCDate(base.getUTCDate() + diff);
-      monday.setUTCHours(0, 0, 0, 0);
-      return monday;
+      if (week_start) {
+        const d = new Date(`${week_start}T00:00:00Z`);
+        d.setUTCHours(0, 0, 0, 0);
+        return d;
+      }
+      const d = new Date();
+      d.setUTCDate(d.getUTCDate() - 6);
+      d.setUTCHours(0, 0, 0, 0);
+      return d;
     };
 
     const weekStart = resolveWeekStart();
     const weekEnd = new Date(weekStart);
     weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
 
-    const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
     const daySlots: Array<{ dateStr: string; label: string }> = [];
     for (let i = 0; i < 7; i++) {
       const d = new Date(weekStart);
       d.setUTCDate(weekStart.getUTCDate() + i);
-      daySlots.push({ dateStr: d.toISOString().split("T")[0], label: DAY_LABELS[i] });
+      const dayAbbr = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getUTCDay()];
+      daySlots.push({ dateStr: d.toISOString().split("T")[0], label: dayAbbr });
     }
 
     const dayWindows = daySlots.map(({ dateStr }) => {
