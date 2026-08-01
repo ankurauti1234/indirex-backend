@@ -40,4 +40,5 @@ __exportStar(require("./LogoDailyViewershipCSV"), exports);
 __exportStar(require("./HouseholdMeterHistory"), exports);
 __exportStar(require("./DeviceHealthReportCSV"), exports);
 __exportStar(require("./SilentDeviceReportCSV"), exports);
+__exportStar(require("./UnassignLog"), exports);
 //# sourceMappingURL=index.js.map

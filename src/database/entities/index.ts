@@ -24,3 +24,4 @@ export * from "./LogoDailyViewershipCSV";
 export * from "./HouseholdMeterHistory";
 export * from "./DeviceHealthReportCSV";
 export * from "./SilentDeviceReportCSV";
+export * from "./UnassignLog";

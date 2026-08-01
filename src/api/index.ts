@@ -11,6 +11,8 @@ import metersRouter from "./meters";
 import dashboardRouter from "./dashboard";
 import alertsRouter from "./alerts";
 import deviceReportsRouter from "./device-reports";
+import unassignRouter from "./unassign/unassign.routes";
+
 
 
 
@@ -24,11 +26,11 @@ router.use("/reports", reportsRouter);
 router.use("/assets", assetsRouter);
 router.use("/households", householdRouter);
 router.use("/decommission", decommissionRouter);
+router.use("/unassign", unassignRouter);
+
 
 router.use("/meters", metersRouter);
-
 router.use("/dashboard", dashboardRouter);
-
 router.use("/alerts", alertsRouter);
 router.use("/device-reports", deviceReportsRouter);
 
