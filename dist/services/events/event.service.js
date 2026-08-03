@@ -983,6 +983,7 @@ class EventService {
         const viewCount = rows.filter((r) => r.viewership === "Yes").length;
         const memCount = rows.filter((r) => r.member_dec === "Yes").length;
         const imgCount = rows.filter((r) => r.image_rec === "Yes").length;
+        const audioCount = rows.filter((r) => r.audio_fingerprint === "Yes").length;
         return {
             data: rows.map((r) => ({
                 device_id: r.device_id,
@@ -995,7 +996,7 @@ class EventService {
                 image_rec: r.image_rec,
                 audio_fingerprint: r.audio_fingerprint,
             })),
-            stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount },
+            stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount, audio: audioCount },
             pagination: { page, limit, total, pages: Math.ceil(total / limit) },
         };
     }

@@ -3,6 +3,9 @@ import { Request, Response } from "express";
 import { AppDataSource } from "../../database/connection";
 import { Meter } from "../../database/entities/Meter";
 import { sendSuccess, sendError } from "../../utils/response";
+import { UnassignService } from "../../services/unassign/unassign.service";
+
+const unassignService = new UnassignService();
 
 // Reusable range condition for IM000101 – IM000600
 const IM_RANGE_CONDITION = `
@@ -186,6 +189,13 @@ export const unassignMeter = async (req: Request, res: Response) => {
       );
  
       await queryRunner.commitTransaction();
+
+      // Write unassign log (fire-and-forget — don't block the response)
+      unassignService.writeLog({
+        meterId,
+        hhid,
+        unassignedByUserId: (req as any).user?.id ?? null,
+      }).catch((err) => console.error("unassign log write failed:", err));
     } catch (txErr) {
       await queryRunner.rollbackTransaction();
       throw txErr;

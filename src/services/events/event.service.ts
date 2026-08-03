@@ -1024,7 +1024,7 @@ export class EventService {
       image_rec: "Yes" | "No" | "No Data";
       audio_fingerprint: "Yes" | "No" | "No Data";
     }>;
-    stats: { total: number; connectivity: number; viewership: number; member_dec: number; image_rec: number };
+    stats: { total: number; connectivity: number; viewership: number; member_dec: number; image_rec: number, audio: number };
     pagination: { page: number; limit: number; total: number; pages: number };
   }> {
     const { device_id, hhid, date, dateFrom, dateTo, region, page = 1, limit = 25 } = filters;
@@ -1172,6 +1172,7 @@ export class EventService {
     const viewCount = rows.filter((r: any) => r.viewership   === "Yes").length;
     const memCount  = rows.filter((r: any) => r.member_dec   === "Yes").length;
     const imgCount  = rows.filter((r: any) => r.image_rec    === "Yes").length;
+    const audioCount = rows.filter((r: any) => r.audio_fingerprint === "Yes").length;
 
     return {
       data: rows.map((r: any) => ({
@@ -1185,7 +1186,7 @@ export class EventService {
         image_rec:         r.image_rec,
         audio_fingerprint: r.audio_fingerprint,
       })),
-      stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount },
+      stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount, audio: audioCount},
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }

@@ -4,6 +4,8 @@ exports.unassignMeter = exports.getInstalledMeters = exports.getMeterStats = voi
 const connection_1 = require("../../database/connection");
 const Meter_1 = require("../../database/entities/Meter");
 const response_1 = require("../../utils/response");
+const unassign_service_1 = require("../../services/unassign/unassign.service");
+const unassignService = new unassign_service_1.UnassignService();
 // Reusable range condition for IM000101 – IM000600
 const IM_RANGE_CONDITION = `
   meter.meterId LIKE 'IM%'
@@ -139,6 +141,12 @@ const unassignMeter = async (req, res) => {
             await queryRunner.query(`INSERT INTO household_meter_history (household_id, meter_id, assigned_at, decommissioned_at)
          VALUES ($1, $2, COALESCE($3, NOW()), NOW())`, [householdId, meterUuid, assignedAt]);
             await queryRunner.commitTransaction();
+            // Write unassign log (fire-and-forget — don't block the response)
+            unassignService.writeLog({
+                meterId,
+                hhid,
+                unassignedByUserId: req.user?.id ?? null,
+            }).catch((err) => console.error("unassign log write failed:", err));
         }
         catch (txErr) {
             await queryRunner.rollbackTransaction();
