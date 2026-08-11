@@ -211,7 +211,7 @@ export class EventService {
     params.push(take, skip);
 
     // Query with latest household per meter and absolute last event timestamp using LATERAL JOIN
-    const query = `
+     const query = `
     WITH latest_assignments AS (
       SELECT DISTINCT ON (ma.meter_id)
         ma.meter_id,
@@ -224,6 +224,7 @@ export class EventService {
     SELECT
       m.meter_id AS device_id,
       h.hhid,
+      COALESCE(h.region, '—') AS region,
       le.last_event_timestamp,
       COUNT(*) OVER() AS total_count
     FROM latest_assignments la
@@ -242,11 +243,13 @@ export class EventService {
     OFFSET $${params.length}
   `;
 
+
     const results = await AppDataSource.query(query, params);
 
     const data: LiveMonitoringItem[] = results.map((row: any) => ({
       device_id: row.device_id,
       hhid: row.hhid,
+      region: row.region,
       last_event_timestamp: row.last_event_timestamp ? parseInt(row.last_event_timestamp) : null,
     }));
 
@@ -571,7 +574,7 @@ export class EventService {
   async getWeeklyButtonPressedReport(
     filters: WeeklyButtonPressedFilters = {}
   ): Promise<PaginatedWeeklyButtonPressed> {
-    return this.buildWeeklyDayReport(filters, [3, 4]);
+    return this.buildWeeklyDayReport(filters, [3]);
   }
 
   private async buildWeeklyDayReport(
@@ -1023,8 +1026,9 @@ export class EventService {
       member_dec: "Yes" | "No";
       image_rec: "Yes" | "No" | "No Data";
       audio_fingerprint: "Yes" | "No" | "No Data";
+      positive_viewership: "Yes" | "No";
     }>;
-    stats: { total: number; connectivity: number; viewership: number; member_dec: number; image_rec: number, audio: number };
+    stats: { total: number; connectivity: number; viewership: number; member_dec: number; image_rec: number, audio: number; positive_viewership: number;};
     pagination: { page: number; limit: number; total: number; pages: number };
   }> {
     const { device_id, hhid, date, dateFrom, dateTo, region, page = 1, limit = 25 } = filters;
@@ -1153,6 +1157,10 @@ export class EventService {
             WHEN ea.has_fp         THEN 'No'
             ELSE 'No Data'
           END AS audio_fingerprint,
+          CASE
+            WHEN ea.has_img_yes OR ea.has_fp_matched THEN 'Yes'
+            ELSE 'No'
+          END AS positive_viewership,
           COUNT(*) OVER() AS total_count
         FROM base_days bd
         LEFT JOIN event_agg ea
@@ -1173,6 +1181,7 @@ export class EventService {
     const memCount  = rows.filter((r: any) => r.member_dec   === "Yes").length;
     const imgCount  = rows.filter((r: any) => r.image_rec    === "Yes").length;
     const audioCount = rows.filter((r: any) => r.audio_fingerprint === "Yes").length;
+    const posViewCount = rows.filter((r: any) => r.positive_viewership === "Yes").length;
 
     return {
       data: rows.map((r: any) => ({
@@ -1185,8 +1194,9 @@ export class EventService {
         member_dec:        r.member_dec,
         image_rec:         r.image_rec,
         audio_fingerprint: r.audio_fingerprint,
+        positive_viewership: r.positive_viewership,
       })),
-      stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount, audio: audioCount},
+      stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount, audio: audioCount, positive_viewership: posViewCount},
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     };
   }
