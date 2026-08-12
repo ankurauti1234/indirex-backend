@@ -167,6 +167,7 @@ class EventService {
     SELECT
       m.meter_id AS device_id,
       h.hhid,
+      COALESCE(h.region, '—') AS region,
       le.last_event_timestamp,
       COUNT(*) OVER() AS total_count
     FROM latest_assignments la
@@ -188,6 +189,7 @@ class EventService {
         const data = results.map((row) => ({
             device_id: row.device_id,
             hhid: row.hhid,
+            region: row.region,
             last_event_timestamp: row.last_event_timestamp ? parseInt(row.last_event_timestamp) : null,
         }));
         const total = results.length > 0 ? parseInt(results[0].total_count) : 0;
@@ -462,7 +464,7 @@ class EventService {
     // Same shape as the weekly connectivity report, but a day only counts as
     // "pressed" when a Type 3 (membership button) or Type 4 event was received.
     async getWeeklyButtonPressedReport(filters = {}) {
-        return this.buildWeeklyDayReport(filters, [3, 4]);
+        return this.buildWeeklyDayReport(filters, [3]);
     }
     async buildWeeklyDayReport(filters = {}, eventTypes) {
         const { device_id, hhid, week_start, status, page = 1, limit = 25 } = filters;
@@ -966,6 +968,10 @@ class EventService {
             WHEN ea.has_fp         THEN 'No'
             ELSE 'No Data'
           END AS audio_fingerprint,
+          CASE
+            WHEN ea.has_img_yes OR ea.has_fp_matched THEN 'Yes'
+            ELSE 'No'
+          END AS positive_viewership,
           COUNT(*) OVER() AS total_count
         FROM base_days bd
         LEFT JOIN event_agg ea
@@ -984,6 +990,7 @@ class EventService {
         const memCount = rows.filter((r) => r.member_dec === "Yes").length;
         const imgCount = rows.filter((r) => r.image_rec === "Yes").length;
         const audioCount = rows.filter((r) => r.audio_fingerprint === "Yes").length;
+        const posViewCount = rows.filter((r) => r.positive_viewership === "Yes").length;
         return {
             data: rows.map((r) => ({
                 device_id: r.device_id,
@@ -995,8 +1002,9 @@ class EventService {
                 member_dec: r.member_dec,
                 image_rec: r.image_rec,
                 audio_fingerprint: r.audio_fingerprint,
+                positive_viewership: r.positive_viewership,
             })),
-            stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount, audio: audioCount },
+            stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount, audio: audioCount, positive_viewership: posViewCount },
             pagination: { page, limit, total, pages: Math.ceil(total / limit) },
         };
     }

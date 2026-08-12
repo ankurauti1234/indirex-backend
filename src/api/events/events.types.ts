@@ -31,6 +31,7 @@ export interface LiveMonitoringFilters {
 export interface LiveMonitoringItem {
   device_id: string;
   hhid: string;
+  region: string;
   last_event_timestamp: number | null;
 }
 

@@ -90,13 +90,27 @@ export const getInstalledMeters = async (req: Request, res: Response) => {
       .take(limit)
       .getManyAndCount();
 
+    // Fetch region via raw query since Household entity doesn't map region column
+    const meterIds = meters.map(m => m.id);
+    let regionMap: Record<string, string> = {};
+    if (meterIds.length > 0) {
+      const regionRows: { meter_id: string; region: string }[] = await AppDataSource.query(
+        `SELECT m.id AS meter_id, COALESCE(h.region, '—') AS region
+         FROM meters m
+         LEFT JOIN households h ON h.id = m.assigned_household_id
+         WHERE m.id = ANY($1)`,
+        [meterIds]
+      );
+      regionMap = Object.fromEntries(regionRows.map(r => [r.meter_id, r.region]));
+    }
+
     const result = meters.map((m) => {
-      // Pick the most recent assignment's assignedAt as the installed date
       const latestAssignment = m.assignments
         ?.sort((a, b) => new Date(b.assignedAt).getTime() - new Date(a.assignedAt).getTime())[0];
       return {
         meterId: m.meterId,
         assignedHouseholdId: m.assignedHousehold?.hhid ?? null,
+        region: regionMap[m.id] ?? "—",
         meterType: m.meterType ?? null,
         assetSerialNumber: m.assetSerialNumber ?? null,
         installedAt: latestAssignment?.assignedAt ?? m.updatedAt,
