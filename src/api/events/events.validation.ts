@@ -53,7 +53,7 @@ export const weeklyConnectivityQuerySchema = Joi.object({
 });
 
 export const weeklyViewershipQuerySchema = weeklyConnectivityQuerySchema.keys({
-  metric: Joi.string().valid("image", "audio").default("image"),
+  metric: Joi.string().valid("image", "audio", "positive").default("image"),
   region: Joi.string().optional(),
   status: Joi.string().valid("connected", "disconnected", "partial", "no_data").optional(),
 });

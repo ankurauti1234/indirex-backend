@@ -245,7 +245,7 @@ export interface PaginatedWeeklyButtonPressed {
 // can be "Yes" (recognized/matched), "No" (event received but not matched),
 // or "No Data" (no relevant event at all that day).
 
-export type ViewershipMetric = "image" | "audio";
+export type ViewershipMetric =  "positive" | "image" | "audio";
 
 export interface WeeklyViewershipFilters {
   device_id?: string;

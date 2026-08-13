@@ -699,6 +699,26 @@ class EventService {
         // Per-day 3-state CASE expression, swapped in per metric.
         const dayStatusSelects = dayWindows
             .map(({ startTs, endTs }, idx) => {
+            if (metric === "positive") {
+                return `
+          CASE
+            WHEN EXISTS (
+              SELECT 1 FROM events e_d${idx}
+              WHERE e_d${idx}.device_id = m.meter_id
+                AND e_d${idx}.timestamp >= ${startTs}
+                AND e_d${idx}.timestamp <= ${endTs}
+                AND e_d${idx}.type = 29
+            ) OR EXISTS (
+              SELECT 1 FROM events e_d${idx}b
+              WHERE e_d${idx}b.device_id = m.meter_id
+                AND e_d${idx}b.timestamp >= ${startTs}
+                AND e_d${idx}b.timestamp <= ${endTs}
+                AND e_d${idx}b.type = 42
+                AND (e_d${idx}b.details->>'status') = 'MATCHED'
+            ) THEN 'Yes'
+            ELSE 'No'
+          END AS day_${idx}`;
+            }
             const yesCondition = metric === "audio"
                 ? `e_d${idx}.type = 42 AND (e_d${idx}.details->>'status') = 'MATCHED'`
                 : `e_d${idx}.type = 29`;
@@ -706,23 +726,23 @@ class EventService {
                 ? `e_d${idx}.type = 42`
                 : `e_d${idx}.type = 30`;
             return `
-        CASE
-          WHEN EXISTS (
-            SELECT 1 FROM events e_d${idx}
-            WHERE e_d${idx}.device_id = m.meter_id
-              AND e_d${idx}.timestamp >= ${startTs}
-              AND e_d${idx}.timestamp <= ${endTs}
-              AND ${yesCondition}
-          ) THEN 'Yes'
-          WHEN EXISTS (
-            SELECT 1 FROM events e_d${idx}
-            WHERE e_d${idx}.device_id = m.meter_id
-              AND e_d${idx}.timestamp >= ${startTs}
-              AND e_d${idx}.timestamp <= ${endTs}
-              AND ${noCondition}
-          ) THEN 'No'
-          ELSE 'No Data'
-        END AS day_${idx}`;
+          CASE
+            WHEN EXISTS (
+              SELECT 1 FROM events e_d${idx}
+              WHERE e_d${idx}.device_id = m.meter_id
+                AND e_d${idx}.timestamp >= ${startTs}
+                AND e_d${idx}.timestamp <= ${endTs}
+                AND ${yesCondition}
+            ) THEN 'Yes'
+            WHEN EXISTS (
+              SELECT 1 FROM events e_d${idx}
+              WHERE e_d${idx}.device_id = m.meter_id
+                AND e_d${idx}.timestamp >= ${startTs}
+                AND e_d${idx}.timestamp <= ${endTs}
+                AND ${noCondition}
+            ) THEN 'No'
+            ELSE 'No Data'
+          END AS day_${idx}`;
         })
             .join(",\n");
         params.push(limit, (page - 1) * limit);

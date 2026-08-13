@@ -52,7 +52,7 @@ exports.weeklyConnectivityQuerySchema = joi_1.default.object({
     limit: joi_1.default.number().min(1).max(999999).default(25),
 });
 exports.weeklyViewershipQuerySchema = exports.weeklyConnectivityQuerySchema.keys({
-    metric: joi_1.default.string().valid("image", "audio").default("image"),
+    metric: joi_1.default.string().valid("image", "audio", "positive").default("image"),
     region: joi_1.default.string().optional(),
     status: joi_1.default.string().valid("connected", "disconnected", "partial", "no_data").optional(),
 });
