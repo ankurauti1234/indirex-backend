@@ -274,7 +274,15 @@ class EventService {
         SELECT 
           m.meter_id AS device_id,
           h.hhid,
-          CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status
+          CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status,
+          (
+            SELECT json_agg(e2.details)
+            FROM events e2
+            WHERE e2.device_id = m.meter_id
+              AND e2.type = 3
+              AND e2.timestamp >= $1
+              AND e2.timestamp <= $2
+          ) AS type3_details
         FROM latest_assignments la
         INNER JOIN meters m ON la.meter_id = m.id
         INNER JOIN households h ON la.household_id = h.id
@@ -315,16 +323,34 @@ class EventService {
         const globalTotal = results.length > 0 ? parseInt(results[0].total_records) : 0;
         const globalActive = results.length > 0 ? parseInt(results[0].total_active) : 0;
         return {
-            data: results.map((row) => ({
-                device_id: row.device_id,
-                hhid: row.hhid,
-                status: row.status,
-                date: targetDateStr,
-            })),
-            stats: {
-                active: globalActive,
-                total: globalTotal
-            },
+            data: results.map((row) => {
+                const allEvents = Array.isArray(row.type3_details) ? row.type3_details : [];
+                // Collect all members across all type 3 events, keyed by "age-gender"
+                const memberMap = new Map();
+                for (const eventDetails of allEvents) {
+                    if (!eventDetails || !Array.isArray(eventDetails.members))
+                        continue;
+                    for (const m of eventDetails.members) {
+                        const genderShort = m.gender === "Male" ? "M" : m.gender === "Female" ? "F" : m.gender ?? "";
+                        const code = `${m.age}-${genderShort}`;
+                        const existing = memberMap.get(code);
+                        memberMap.set(code, {
+                            code,
+                            // Once active in any press during the day → stays active
+                            active: (existing?.active ?? false) || m.active === true,
+                        });
+                    }
+                }
+                const declared_members = Array.from(memberMap.values());
+                return {
+                    device_id: row.device_id,
+                    hhid: row.hhid,
+                    status: row.status,
+                    date: targetDateStr,
+                    declared_members,
+                };
+            }),
+            stats: { active: globalActive, total: globalTotal },
             filteredCount: totalPagination
         };
     }

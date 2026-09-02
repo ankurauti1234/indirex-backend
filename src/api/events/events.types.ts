@@ -108,6 +108,7 @@ export interface ButtonPressedReportItem {
   hhid: string;
   button_pressed: "Yes" | "No";
   date: string;
+  declared_members: Array<{ code: string; active: boolean }>;
 }
 
 export interface PaginatedButtonPressedReport {
