@@ -20,6 +20,7 @@ export const uploadMembersSchema = Joi.object({
 export const assignMembersManuallySchema = Joi.object({
   hhid: Joi.string().required(),
   contactEmail: Joi.string().email().required(),
+  region: Joi.string().optional().allow(""),
   members: Joi.array()
     .items(
       Joi.object({

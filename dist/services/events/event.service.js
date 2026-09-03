@@ -167,7 +167,6 @@ class EventService {
     SELECT
       m.meter_id AS device_id,
       h.hhid,
-      COALESCE(h.region, '—') AS region,
       le.last_event_timestamp,
       COUNT(*) OVER() AS total_count
     FROM latest_assignments la
@@ -189,7 +188,6 @@ class EventService {
         const data = results.map((row) => ({
             device_id: row.device_id,
             hhid: row.hhid,
-            region: row.region,
             last_event_timestamp: row.last_event_timestamp ? parseInt(row.last_event_timestamp) : null,
         }));
         const total = results.length > 0 ? parseInt(results[0].total_count) : 0;
@@ -274,7 +272,17 @@ class EventService {
         SELECT 
           m.meter_id AS device_id,
           h.hhid,
-          CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status
+          CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status,
+          (
+            SELECT e2.details
+            FROM events e2
+            WHERE e2.device_id = m.meter_id
+              AND e2.type = 3
+              AND e2.timestamp >= $1
+              AND e2.timestamp <= $2
+            ORDER BY e2.timestamp DESC
+            LIMIT 1
+          ) AS type3_details
         FROM latest_assignments la
         INNER JOIN meters m ON la.meter_id = m.id
         INNER JOIN households h ON la.household_id = h.id
@@ -315,12 +323,24 @@ class EventService {
         const globalTotal = results.length > 0 ? parseInt(results[0].total_records) : 0;
         const globalActive = results.length > 0 ? parseInt(results[0].total_active) : 0;
         return {
-            data: results.map((row) => ({
-                device_id: row.device_id,
-                hhid: row.hhid,
-                status: row.status,
-                date: targetDateStr,
-            })),
+            data: results.map((row) => {
+                // Extract active member codes from Type 3 event details
+                const details = row.type3_details;
+                let declared_members = [];
+                if (details && Array.isArray(details.members)) {
+                    declared_members = details.members.map((m) => ({
+                        code: m.memberCode ?? m.member_code ?? m.code ?? "",
+                        active: m.active === true,
+                    }));
+                }
+                return {
+                    device_id: row.device_id,
+                    hhid: row.hhid,
+                    status: row.status,
+                    date: targetDateStr,
+                    declared_members,
+                };
+            }),
             stats: {
                 active: globalActive,
                 total: globalTotal
@@ -458,39 +478,25 @@ class EventService {
     }
     // ─── Weekly Connectivity Report ─────────────────────────────────────────────
     async getWeeklyConnectivityReport(filters = {}) {
-        return this.buildWeeklyDayReport(filters);
-    }
-    // ─── Weekly Button Pressed Report ───────────────────────────────────────────
-    // Same shape as the weekly connectivity report, but a day only counts as
-    // "pressed" when a Type 3 (membership button) or Type 4 event was received.
-    async getWeeklyButtonPressedReport(filters = {}) {
-        return this.buildWeeklyDayReport(filters, [3]);
-    }
-    async buildWeeklyDayReport(filters = {}, eventTypes) {
         const { device_id, hhid, week_start, status, page = 1, limit = 25 } = filters;
-        const region = filters.region;
-        // week_start is the first day of the 7-day window — no Monday-snapping.
-        // Default: 6 days ago so the window covers last 7 days ending yesterday.
         const resolveWeekStart = () => {
-            if (week_start) {
-                const d = new Date(`${week_start}T00:00:00Z`);
-                d.setUTCHours(0, 0, 0, 0);
-                return d;
-            }
-            const d = new Date();
-            d.setUTCDate(d.getUTCDate() - 6);
-            d.setUTCHours(0, 0, 0, 0);
-            return d;
+            const base = week_start ? new Date(`${week_start}T00:00:00Z`) : new Date();
+            const day = base.getUTCDay();
+            const diff = day === 0 ? -6 : 1 - day;
+            const monday = new Date(base);
+            monday.setUTCDate(base.getUTCDate() + diff);
+            monday.setUTCHours(0, 0, 0, 0);
+            return monday;
         };
         const weekStart = resolveWeekStart();
         const weekEnd = new Date(weekStart);
         weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+        const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
         const daySlots = [];
         for (let i = 0; i < 7; i++) {
             const d = new Date(weekStart);
             d.setUTCDate(weekStart.getUTCDate() + i);
-            const dayAbbr = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()];
-            daySlots.push({ dateStr: d.toISOString().split("T")[0], label: dayAbbr });
+            daySlots.push({ dateStr: d.toISOString().split("T")[0], label: DAY_LABELS[i] });
         }
         const dayWindows = daySlots.map(({ dateStr }) => {
             const base = new Date(`${dateStr}T00:00:00Z`);
@@ -515,14 +521,7 @@ class EventService {
             params.push(`%${hhid}%`);
             conditions.push(`h.hhid ILIKE $${params.length}`);
         }
-        if (region) {
-            params.push(region);
-            conditions.push(`h.region = $${params.length}`);
-        }
         const conditionStr = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-        const eventTypeFilter = eventTypes && eventTypes.length
-            ? `AND e_d__IDX__.type IN (${eventTypes.join(",")})`
-            : "";
         const dayExistsSelects = dayWindows
             .map(({ startTs, endTs }, idx) => `
         CASE WHEN EXISTS (
@@ -530,7 +529,6 @@ class EventService {
           WHERE e_d${idx}.device_id = m.meter_id
             AND e_d${idx}.timestamp >= ${startTs}
             AND e_d${idx}.timestamp <= ${endTs}
-            ${eventTypeFilter.replace(/__IDX__/g, String(idx))}
         ) THEN true ELSE false END AS day_${idx}`)
             .join(",\n");
         params.push(limit, (page - 1) * limit);
@@ -553,7 +551,6 @@ class EventService {
         SELECT
           m.meter_id AS device_id,
           h.hhid,
-          COALESCE(h.region, '—') AS region,
           ${dayExistsSelects}
         FROM latest_assignments la
         INNER JOIN meters m ON la.meter_id = m.id
@@ -619,7 +616,6 @@ class EventService {
             return {
                 device_id: row.device_id,
                 hhid: row.hhid,
-                region: row.region,
                 days,
                 connected_days: connectedDays,
                 total_days: 7,
@@ -630,215 +626,6 @@ class EventService {
             data,
             week_start: weekStart.toISOString().split("T")[0],
             week_end: weekEnd.toISOString().split("T")[0],
-            stats: globalStats,
-            pagination: { page, limit, total: filteredCount, pages: Math.ceil(filteredCount / limit) },
-        };
-    }
-    // ─── Weekly Viewership Report (Image Recognition / Audio Fingerprint) ───────
-    // Same Mon–Sun week-grid shape as connectivity/button-pressed, but each day
-    // resolves to a 3-state value instead of a boolean:
-    //   image:  Type 29 (recognized)      => "Yes"
-    //           Type 30 (not recognized)  => "No"
-    //           neither                   => "No Data"
-    //   audio:  Type 42 with details.status = 'MATCHED' => "Yes"
-    //           Type 42 present but not matched         => "No"
-    //           no Type 42 event at all                 => "No Data"
-    async getWeeklyViewershipReport(filters = {}) {
-        const { device_id, hhid, region, week_start, metric = "image", status, page = 1, limit = 25, } = filters;
-        // week_start is the first day of the 7-day window — no Monday-snapping.
-        // Default: 6 days ago so the window covers last 7 days ending yesterday.
-        const resolveWeekStart = () => {
-            if (week_start) {
-                const d = new Date(`${week_start}T00:00:00Z`);
-                d.setUTCHours(0, 0, 0, 0);
-                return d;
-            }
-            const d = new Date();
-            d.setUTCDate(d.getUTCDate() - 6);
-            d.setUTCHours(0, 0, 0, 0);
-            return d;
-        };
-        const weekStart = resolveWeekStart();
-        const weekEnd = new Date(weekStart);
-        weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
-        const daySlots = [];
-        for (let i = 0; i < 7; i++) {
-            const d = new Date(weekStart);
-            d.setUTCDate(weekStart.getUTCDate() + i);
-            const dayAbbr = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()];
-            daySlots.push({ dateStr: d.toISOString().split("T")[0], label: dayAbbr });
-        }
-        const dayWindows = daySlots.map(({ dateStr }) => {
-            const base = new Date(`${dateStr}T00:00:00Z`);
-            const start = new Date(base);
-            start.setUTCDate(base.getUTCDate() - 1);
-            start.setUTCHours(22, 0, 0, 0);
-            const end = new Date(base);
-            end.setUTCHours(21, 59, 59, 999);
-            return {
-                dateStr,
-                startTs: Math.floor(start.getTime() / 1000),
-                endTs: Math.floor(end.getTime() / 1000),
-            };
-        });
-        const conditions = [];
-        const params = [];
-        if (device_id) {
-            params.push(`%${device_id}%`);
-            conditions.push(`m.meter_id ILIKE $${params.length}`);
-        }
-        if (hhid) {
-            params.push(`%${hhid}%`);
-            conditions.push(`h.hhid ILIKE $${params.length}`);
-        }
-        if (region) {
-            params.push(region);
-            conditions.push(`h.region = $${params.length}`);
-        }
-        const conditionStr = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-        // Per-day 3-state CASE expression, swapped in per metric.
-        const dayStatusSelects = dayWindows
-            .map(({ startTs, endTs }, idx) => {
-            const yesCondition = metric === "audio"
-                ? `e_d${idx}.type = 42 AND (e_d${idx}.details->>'status') = 'MATCHED'`
-                : `e_d${idx}.type = 29`;
-            const noCondition = metric === "audio"
-                ? `e_d${idx}.type = 42`
-                : `e_d${idx}.type = 30`;
-            return `
-        CASE
-          WHEN EXISTS (
-            SELECT 1 FROM events e_d${idx}
-            WHERE e_d${idx}.device_id = m.meter_id
-              AND e_d${idx}.timestamp >= ${startTs}
-              AND e_d${idx}.timestamp <= ${endTs}
-              AND ${yesCondition}
-          ) THEN 'Yes'
-          WHEN EXISTS (
-            SELECT 1 FROM events e_d${idx}
-            WHERE e_d${idx}.device_id = m.meter_id
-              AND e_d${idx}.timestamp >= ${startTs}
-              AND e_d${idx}.timestamp <= ${endTs}
-              AND ${noCondition}
-          ) THEN 'No'
-          ELSE 'No Data'
-        END AS day_${idx}`;
-        })
-            .join(",\n");
-        params.push(limit, (page - 1) * limit);
-        const limitIdx = params.length - 1;
-        const offsetIdx = params.length;
-        const statusFilter = status === "connected" ? "WHERE ms.matched_days = 7" :
-            status === "partial" ? "WHERE ms.matched_days > 0 AND ms.matched_days < 7" :
-                // For image: disconnected = matched_days = 0 (covers both No and No Data since image has no true No Data separation needed)
-                // For audio: split "never matched but had events" vs "no events at all"
-                status === "disconnected" ? (metric === "audio"
-                    ? "WHERE ms.matched_days = 0 AND ms.no_data_days < 7"
-                    : "WHERE ms.matched_days = 0") :
-                    status === "no_data" ? "WHERE ms.no_data_days = 7" : "";
-        const query = `
-      WITH latest_assignments AS (
-        SELECT DISTINCT ON (ma.meter_id)
-          ma.meter_id,
-          ma.household_id
-        FROM meter_assignments ma
-        INNER JOIN meters m ON ma.meter_id = m.id
-        WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
-        ORDER BY ma.meter_id, ma.assigned_at DESC
-      ),
-      meter_days AS (
-        SELECT
-          m.meter_id AS device_id,
-          h.hhid,
-          COALESCE(h.region, '—') AS region,
-          ${dayStatusSelects}
-        FROM latest_assignments la
-        INNER JOIN meters m ON la.meter_id = m.id
-        INNER JOIN households h ON la.household_id = h.id
-        ${conditionStr}
-      ),
-      meter_summary AS (
-        SELECT
-          *,
-          (
-            (CASE WHEN day_0 = 'Yes' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_1 = 'Yes' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_2 = 'Yes' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_3 = 'Yes' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_4 = 'Yes' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_5 = 'Yes' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_6 = 'Yes' THEN 1 ELSE 0 END)
-          ) AS matched_days,
-          (
-            (CASE WHEN day_0 = 'No Data' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_1 = 'No Data' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_2 = 'No Data' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_3 = 'No Data' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_4 = 'No Data' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_5 = 'No Data' THEN 1 ELSE 0 END) +
-            (CASE WHEN day_6 = 'No Data' THEN 1 ELSE 0 END)
-          ) AS no_data_days
-        FROM meter_days
-      ),
-      global_stats AS (
-        SELECT
-          COUNT(*) AS total_meters,
-          SUM(CASE WHEN matched_days = 7 THEN 1 ELSE 0 END) AS fully_matched,
-          SUM(CASE WHEN matched_days > 0 AND matched_days < 7 THEN 1 ELSE 0 END) AS partially_matched,
-          SUM(CASE WHEN matched_days = 0 THEN 1 ELSE 0 END) AS not_matched,
-          ROUND(AVG(matched_days::numeric / 7 * 100), 1) AS avg_match_rate
-        FROM meter_summary
-      )
-      SELECT
-        ms.*,
-        gs.total_meters,
-        gs.fully_matched,
-        gs.partially_matched,
-        gs.not_matched,
-        gs.avg_match_rate,
-        COUNT(*) OVER() AS filtered_count
-      FROM meter_summary ms
-      CROSS JOIN global_stats gs
-      ${statusFilter}
-      ORDER BY ms.device_id
-      LIMIT $${limitIdx}
-      OFFSET $${offsetIdx}
-    `;
-        const results = await connection_1.AppDataSource.query(query, params);
-        const filteredCount = results.length > 0 ? parseInt(results[0].filtered_count) : 0;
-        const globalStats = results.length > 0
-            ? {
-                total_meters: parseInt(results[0].total_meters),
-                fully_matched: parseInt(results[0].fully_matched),
-                partially_matched: parseInt(results[0].partially_matched),
-                not_matched: parseInt(results[0].not_matched),
-                avg_match_rate: parseFloat(results[0].avg_match_rate),
-            }
-            : { total_meters: 0, fully_matched: 0, partially_matched: 0, not_matched: 0, avg_match_rate: 0 };
-        const data = results.map((row) => {
-            const matchedDays = parseInt(row.matched_days);
-            const noDataDays = parseInt(row.no_data_days);
-            const days = daySlots.map((slot, idx) => ({
-                date: slot.dateStr,
-                day: slot.label,
-                status: row[`day_${idx}`],
-            }));
-            return {
-                device_id: row.device_id,
-                hhid: row.hhid,
-                region: row.region,
-                days,
-                matched_days: matchedDays,
-                no_data_days: noDataDays,
-                total_days: 7,
-                match_rate: Math.round((matchedDays / 7) * 100),
-            };
-        });
-        return {
-            data,
-            week_start: weekStart.toISOString().split("T")[0],
-            week_end: weekEnd.toISOString().split("T")[0],
-            metric,
             stats: globalStats,
             pagination: { page, limit, total: filteredCount, pages: Math.ceil(filteredCount / limit) },
         };
@@ -968,10 +755,6 @@ class EventService {
             WHEN ea.has_fp         THEN 'No'
             ELSE 'No Data'
           END AS audio_fingerprint,
-          CASE
-            WHEN ea.has_img_yes OR ea.has_fp_matched THEN 'Yes'
-            ELSE 'No'
-          END AS positive_viewership,
           COUNT(*) OVER() AS total_count
         FROM base_days bd
         LEFT JOIN event_agg ea
@@ -989,8 +772,6 @@ class EventService {
         const viewCount = rows.filter((r) => r.viewership === "Yes").length;
         const memCount = rows.filter((r) => r.member_dec === "Yes").length;
         const imgCount = rows.filter((r) => r.image_rec === "Yes").length;
-        const audioCount = rows.filter((r) => r.audio_fingerprint === "Yes").length;
-        const posViewCount = rows.filter((r) => r.positive_viewership === "Yes").length;
         return {
             data: rows.map((r) => ({
                 device_id: r.device_id,
@@ -1002,9 +783,8 @@ class EventService {
                 member_dec: r.member_dec,
                 image_rec: r.image_rec,
                 audio_fingerprint: r.audio_fingerprint,
-                positive_viewership: r.positive_viewership,
             })),
-            stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount, audio: audioCount, positive_viewership: posViewCount },
+            stats: { total, connectivity: connCount, viewership: viewCount, member_dec: memCount, image_rec: imgCount },
             pagination: { page, limit, total, pages: Math.ceil(total / limit) },
         };
     }

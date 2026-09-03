@@ -41,4 +41,5 @@ __exportStar(require("./HouseholdMeterHistory"), exports);
 __exportStar(require("./DeviceHealthReportCSV"), exports);
 __exportStar(require("./SilentDeviceReportCSV"), exports);
 __exportStar(require("./UnassignLog"), exports);
+__exportStar(require("./NewHouseholdAssigned"), exports);
 //# sourceMappingURL=index.js.map

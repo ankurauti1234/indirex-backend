@@ -42,6 +42,7 @@ const Household_1 = require("../../database/entities/Household");
 const Member_1 = require("../../database/entities/Member");
 const PreregisteredContact_1 = require("../../database/entities/PreregisteredContact");
 const MeterAssignment_1 = require("../../database/entities/MeterAssignment");
+const NewHouseholdAssigned_1 = require("../../database/entities/NewHouseholdAssigned");
 const csv_parser_1 = __importDefault(require("csv-parser"));
 const xlsx_1 = __importDefault(require("xlsx"));
 const stream = __importStar(require("stream"));
@@ -57,6 +58,7 @@ class HouseholdService {
         this.householdRepo = connection_1.AppDataSource.getRepository(Household_1.Household);
         this.memberRepo = connection_1.AppDataSource.getRepository(Member_1.Member);
         this.contactRepo = connection_1.AppDataSource.getRepository(PreregisteredContact_1.PreregisteredContact);
+        this.newHouseholdRepo = connection_1.AppDataSource.getRepository(NewHouseholdAssigned_1.NewHouseholdAssigned);
         this.assignmentRepo = connection_1.AppDataSource.getRepository(MeterAssignment_1.MeterAssignment);
     }
     async getHouseholds(filters) {
@@ -287,16 +289,38 @@ class HouseholdService {
         await this.memberRepo.remove(member);
     }
     // ── Manual member assignment ────────────────────────────────────────────────
-    async assignMembersManually(hhid, contactEmail, members) {
+    async assignMembersManually(hhid, contactEmail, members, region) {
         // 1. Resolve household by HHID string (case-insensitive)
         const normalizedHhid = hhid.trim().toUpperCase();
-        const household = await this.householdRepo
+        let household = await this.householdRepo
             .createQueryBuilder("h")
             .leftJoinAndSelect("h.members", "members")
             .where("UPPER(h.hhid) = :hhid", { hhid: normalizedHhid })
             .getOne();
-        if (!household)
-            throw new Error(`Household with HHID "${normalizedHhid}" not found`);
+        let householdCreated = false;
+        if (!household) {
+            // Auto-create the household since it doesn't exist yet
+            const newHousehold = this.householdRepo.create({ hhid: normalizedHhid });
+            household = await this.householdRepo.save(newHousehold);
+            // Also set region via raw query since entity doesn't map region column
+            if (region?.trim()) {
+                await connection_1.AppDataSource.query(`UPDATE households SET region = $1 WHERE id = $2`, [region.trim(), household.id]);
+            }
+            // Log to new_household_assigned table
+            const logEntry = this.newHouseholdRepo.create({
+                household,
+                hhid: normalizedHhid,
+                region: region?.trim() || undefined,
+            });
+            await this.newHouseholdRepo.save(logEntry);
+            // Re-fetch with members relation
+            household = (await this.householdRepo
+                .createQueryBuilder("h")
+                .leftJoinAndSelect("h.members", "members")
+                .where("h.id = :id", { id: household.id })
+                .getOne());
+            householdCreated = true;
+        }
         // 2. Block reassignment if household already has members
         if (household.members && household.members.length > 0) {
             throw new Error(`HHID "${normalizedHhid}" already has members assigned. Cannot overwrite existing assignment.`);
@@ -339,7 +363,7 @@ class HouseholdService {
             });
             await this.contactRepo.save(contact);
         }
-        return { saved: saved.length, email: contactEmail };
+        return { saved: saved.length, email: contactEmail, householdCreated };
     }
     // ── Preregistered contact emails (for the email autocomplete dropdown) ──────
     async getPreregisteredEmails(search) {

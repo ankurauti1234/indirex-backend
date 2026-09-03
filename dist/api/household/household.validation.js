@@ -22,6 +22,7 @@ exports.uploadMembersSchema = joi_1.default.object({
 exports.assignMembersManuallySchema = joi_1.default.object({
     hhid: joi_1.default.string().required(),
     contactEmail: joi_1.default.string().email().required(),
+    region: joi_1.default.string().optional().allow(""),
     members: joi_1.default.array()
         .items(joi_1.default.object({
         memberCode: joi_1.default.string().max(10).required(),

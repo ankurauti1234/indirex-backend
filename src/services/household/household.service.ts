@@ -3,6 +3,7 @@ import { Household } from "../../database/entities/Household";
 import { Member } from "../../database/entities/Member";
 import { PreregisteredContact } from "../../database/entities/PreregisteredContact";
 import { MeterAssignment } from "../../database/entities/MeterAssignment";
+import { NewHouseholdAssigned } from "../../database/entities/NewHouseholdAssigned";
 import csv from "csv-parser";
 import XLSX from "xlsx";
 import * as stream from "stream";
@@ -58,6 +59,7 @@ export class HouseholdService {
   private householdRepo = AppDataSource.getRepository(Household);
   private memberRepo = AppDataSource.getRepository(Member);
   private contactRepo = AppDataSource.getRepository(PreregisteredContact);
+  private newHouseholdRepo = AppDataSource.getRepository(NewHouseholdAssigned);
   private assignmentRepo = AppDataSource.getRepository(MeterAssignment);
 
   async getHouseholds(filters: HouseholdFilters): Promise<PaginatedHouseholds> {
@@ -323,19 +325,51 @@ async updatePreassignedContact(
       memberCode: string;
       age: number;
       gender: string;
-      dob?: string; // optional — auto-derived from age if omitted
-    }>
-  ): Promise<{ saved: number; email: string }> {
+      dob?: string;
+    }>,
+    region?: string
+  ): Promise<{ saved: number; email: string; householdCreated: boolean }> {
 
     // 1. Resolve household by HHID string (case-insensitive)
     const normalizedHhid = hhid.trim().toUpperCase();
-    const household = await this.householdRepo
+    let household = await this.householdRepo
       .createQueryBuilder("h")
       .leftJoinAndSelect("h.members", "members")
       .where("UPPER(h.hhid) = :hhid", { hhid: normalizedHhid })
       .getOne();
 
-    if (!household) throw new Error(`Household with HHID "${normalizedHhid}" not found`);
+    let householdCreated = false;
+
+    if (!household) {
+      // Auto-create the household since it doesn't exist yet
+      const newHousehold = this.householdRepo.create({ hhid: normalizedHhid });
+      household = await this.householdRepo.save(newHousehold);
+
+      // Also set region via raw query since entity doesn't map region column
+      if (region?.trim()) {
+        await AppDataSource.query(
+          `UPDATE households SET region = $1 WHERE id = $2`,
+          [region.trim(), household.id]
+        );
+      }
+
+      // Log to new_household_assigned table
+      const logEntry = this.newHouseholdRepo.create({
+        household,
+        hhid: normalizedHhid,
+        region: region?.trim() || undefined,
+      });
+      await this.newHouseholdRepo.save(logEntry);
+
+      // Re-fetch with members relation
+      household = (await this.householdRepo
+        .createQueryBuilder("h")
+        .leftJoinAndSelect("h.members", "members")
+        .where("h.id = :id", { id: household.id })
+        .getOne())!;
+
+      householdCreated = true;
+    }
 
     // 2. Block reassignment if household already has members
     if (household.members && household.members.length > 0) {
@@ -383,7 +417,7 @@ async updatePreassignedContact(
       await this.contactRepo.save(contact);
     }
 
-    return { saved: saved.length, email: contactEmail };
+    return { saved: saved.length, email: contactEmail, householdCreated };
   }
 
   // ── Preregistered contact emails (for the email autocomplete dropdown) ──────
