@@ -210,75 +210,95 @@ export class DecommissionService {
   }
 
   async getHouseholdMeterHistory(params: {
-    page: number;
-    limit: number;
-    meterId?: string;
-    hhid?: string;
-    assigned_from?: Date;
-    assigned_to?: Date;
-    decommissioned_from?: Date;
-    decommissioned_to?: Date;
-  }) {
-    const { page, limit, meterId, hhid, assigned_from, assigned_to, decommissioned_from, decommissioned_to } = params;
+  page: number;
+  limit: number;
+  meterId?: string;
+  hhid?: string;
+  assigned_from?: Date;
+  assigned_to?: Date;
+  decommissioned_from?: Date;
+  decommissioned_to?: Date;
+}) {
+  const { page, limit, meterId, hhid, assigned_from, assigned_to, decommissioned_from, decommissioned_to } = params;
 
-    const qb = this.historyRepo
-      .createQueryBuilder("h")
-      .leftJoinAndSelect("h.meter", "meter")
-      .leftJoinAndSelect("h.household", "household");
+  const qb = this.historyRepo
+    .createQueryBuilder("h")
+    .leftJoinAndSelect("h.meter", "meter")
+    .leftJoinAndSelect("h.household", "household");
 
-    if (meterId) {
-      qb.andWhere("meter.meterId ILIKE :meterId", { meterId: `%${meterId}%` });
-    }
-    if (hhid) {
-      qb.andWhere("household.hhid ILIKE :hhid", { hhid: `%${hhid}%` });
-    }
-    if (assigned_from) {
-      qb.andWhere("h.assignedAt >= :assigned_from", { assigned_from });
-    }
-    if (assigned_to) {
-      qb.andWhere("h.assignedAt <= :assigned_to", { assigned_to });
-    }
-    if (decommissioned_from) {
-      qb.andWhere("h.decommissionedAt >= :decommissioned_from", { decommissioned_from });
-    }
-    if (decommissioned_to) {
-      qb.andWhere("h.decommissionedAt <= :decommissioned_to", { decommissioned_to });
-    }
+  if (meterId) qb.andWhere("meter.meterId ILIKE :meterId", { meterId: `%${meterId}%` });
+  if (hhid) qb.andWhere("household.hhid ILIKE :hhid", { hhid: `%${hhid}%` });
+  if (assigned_from) qb.andWhere("h.assignedAt >= :assigned_from", { assigned_from });
+  if (assigned_to) qb.andWhere("h.assignedAt <= :assigned_to", { assigned_to });
+  if (decommissioned_from) qb.andWhere("h.decommissionedAt >= :decommissioned_from", { decommissioned_from });
+  if (decommissioned_to) qb.andWhere("h.decommissionedAt <= :decommissioned_to", { decommissioned_to });
 
-    qb.orderBy("h.assignedAt", "DESC");
+  qb.orderBy("h.assignedAt", "DESC");
 
-    const total = await qb.getCount();
-    const rows = await qb.skip((page - 1) * limit).take(limit).getMany();
+  const total = await qb.getCount();
+  const rows = await qb.skip((page - 1) * limit).take(limit).getMany();
 
-    // Get unique household UUIDs from this page
-    const householdIds = [...new Set(rows.map((r) => r.household.id))];
+  const householdIds = [...new Set(rows.map((r) => r.household.id))];
 
-    // Raw query: join meter_assignments with meters to get active meter_id string per household
-    const activeMap = new Map<string, string>(); // household_id (uuid) -> meterId (string)
-    if (householdIds.length > 0) {
-      const activeRows: Array<{ household_id: string; meter_id_str: string }> =
-        await this.assignmentRepo.manager.query(
-          `SELECT a.household_id::text, m.meter_id AS meter_id_str
-           FROM meter_assignments a
-           INNER JOIN meters m ON m.id = a.meter_id
-           WHERE a.household_id = ANY($1::uuid[])`,
-          [householdIds]
-        );
-      for (const row of activeRows) {
-        activeMap.set(row.household_id, row.meter_id_str);
-      }
+  // Active meter with assigned_at
+  const activeMap = new Map<string, { meterId: string; assignedAt: string }>();
+  const membersMap = new Map<string, Array<{ code: string; age: number; gender: string }>>();
+
+  if (householdIds.length > 0) {
+    const activeRows: Array<{ household_id: string; meter_id_str: string; assigned_at: string }> =
+      await this.assignmentRepo.manager.query(
+        `SELECT a.household_id::text, m.meter_id AS meter_id_str, a.assigned_at
+        FROM meter_assignments a
+        INNER JOIN meters m ON m.id = a.meter_id
+        WHERE a.household_id = ANY($1::uuid[])`,
+        [householdIds]
+      );
+
+    for (const row of activeRows) {
+      activeMap.set(row.household_id, {
+        meterId: row.meter_id_str,
+        // Apply UTC+4 offset
+        assignedAt: new Date(new Date(row.assigned_at).getTime() + 4 * 60 * 60 * 1000).toISOString(),
+      });
     }
 
-    return {
-      data: rows.map((r) => ({
+    const membersRows: Array<{ household_id: string; member_code: string; dob: string; gender: string }> =
+      await this.assignmentRepo.manager.query(
+        `SELECT household_id::text, member_code, dob, gender
+        FROM members
+        WHERE household_id = ANY($1::uuid[])
+        ORDER BY member_code ASC`,
+        [householdIds]
+      );
+
+    for (const m of membersRows) {
+      const age = new Date().getFullYear() - new Date(m.dob).getFullYear();
+      const genderShort = m.gender === "Male" ? "M" : m.gender === "Female" ? "F" : m.gender;
+      const entry = { code: m.member_code, age, gender: genderShort };
+      const bucket = membersMap.get(m.household_id) ?? [];
+      bucket.push(entry);
+      membersMap.set(m.household_id, bucket);
+    }
+  }
+
+  // Return is now OUTSIDE the if block — always runs
+  return {
+    data: rows.map((r) => {
+      const active = activeMap.get(r.household.id) ?? null;
+      const members = membersMap.get(r.household.id) ?? [];
+      return {
         id: String(r.id),
         meterId: r.meter.meterId,
         hhid: r.household.hhid,
+        householdId: r.household.id,
         assignedAt: r.assignedAt,
         decommissionedAt: r.decommissionedAt ?? null,
-        activeMeterId: activeMap.get(r.household.id) ?? null,
-      })),
-      pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
-    };
-  }
+        activeMeterId: active?.meterId ?? null,
+        activeMeterInstalledAt: active?.assignedAt ?? null,
+        members,
+      };
+    }),
+    pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+  };
+}
 }
