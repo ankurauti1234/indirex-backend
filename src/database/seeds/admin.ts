@@ -7,7 +7,7 @@ export const seedAdmin = async () => {
   await AppDataSource.initialize();
 
   const repo = AppDataSource.getRepository(User);
-  const admin = await repo.findOneBy({ email: "vahan.nersesyan@inditronics.com" });
+  const admin = await repo.findOneBy({ email: "mateen.mushrif@inditronics.com" });
 
   if (admin) {
     console.log("Admin already exists – skipping seed");
@@ -17,10 +17,10 @@ export const seedAdmin = async () => {
 
   const hash = await hashPassword("Pass@123");
   await repo.insert({
-    email: "vahan.nersesyan@inditronics.com",
+    email: "mateen.mushrif@inditronics.com",
     password: hash,
-    name: "Vahan Nersesyan",
-    role: UserRole.SUPPORT
+    name: "Mateen Mushrif",
+    role: UserRole.DEVELOPER
   });
 
   console.log("Admin seeded");
