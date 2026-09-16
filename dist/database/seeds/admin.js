@@ -8,7 +8,7 @@ const encryption_1 = require("../../utils/encryption");
 const seedAdmin = async () => {
     await connection_1.AppDataSource.initialize();
     const repo = connection_1.AppDataSource.getRepository(User_1.User);
-    const admin = await repo.findOneBy({ email: "vahan.nersesyan@inditronics.com" });
+    const admin = await repo.findOneBy({ email: "mateen.mushrif@inditronics.com" });
     if (admin) {
         console.log("Admin already exists – skipping seed");
         await connection_1.AppDataSource.destroy();
@@ -16,10 +16,10 @@ const seedAdmin = async () => {
     }
     const hash = await (0, encryption_1.hashPassword)("Pass@123");
     await repo.insert({
-        email: "vahan.nersesyan@inditronics.com",
+        email: "mateen.mushrif@inditronics.com",
         password: hash,
-        name: "Vahan Nersesyan",
-        role: User_1.UserRole.SUPPORT
+        name: "Mateen Mushrif",
+        role: User_1.UserRole.DEVELOPER
     });
     console.log("Admin seeded");
     await connection_1.AppDataSource.destroy();

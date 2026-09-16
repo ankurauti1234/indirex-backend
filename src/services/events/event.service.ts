@@ -1157,7 +1157,13 @@ export class EventService {
           ((to_timestamp(e.timestamp + 7200) AT TIME ZONE 'UTC')::date) AS report_date,
           bool_or(TRUE)                                                        AS has_any,
           bool_or(e.type IN (29, 30, 42))                                      AS has_view,
-          bool_or(e.type = 3)                                                  AS has_memdec,
+          bool_or(
+            e.type = 3 AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(e.details->'members') AS m
+              WHERE (m->>'active')::boolean = true
+            )
+          )                                                                    AS has_memdec,
           bool_or(e.type = 29)                                                 AS has_img_yes,
           bool_or(e.type = 30)                                                 AS has_img_no,
           bool_or(e.type = 42)                                                 AS has_fp,
