@@ -274,7 +274,13 @@ class EventService {
         SELECT 
           m.meter_id AS device_id,
           h.hhid,
-          CASE WHEN COUNT(e.id) > 0 THEN 'Yes' ELSE 'No' END AS status,
+          CASE WHEN bool_or(
+            e.type = 3 AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements(e.details->'members') AS m
+              WHERE (m->>'active')::boolean = true
+            )
+          ) THEN 'Yes' ELSE 'No' END AS status,
           (
             SELECT json_agg(e2.details)
             FROM events e2
