@@ -285,171 +285,157 @@ export class EventService {
    * Helper to get report data (Connectivity, Viewership, Button Pressed)
    */
   private async getGeneralReport(
-    filters: ViewershipFilters,
-    types?: number[]
-  ): Promise<{ data: any[]; stats: { active: number; total: number }; filteredCount: number }> {
-    const { device_id, hhid, date, status, page = 1, limit = 25 } = filters;
+  filters: ViewershipFilters,
+  types?: number[]
+): Promise<{ data: any[]; stats: { active: number; total: number }; filteredCount: number }> {
+  const { device_id, hhid, date, status, page = 1, limit = 25 } = filters;
 
-    const take = limit;
-    const skip = (page - 1) * take;
+  const take = limit;
+  const skip = (page - 1) * take;
 
-    // Calculate date range (Yerevan Time: UTC+4)
-    // Target: 02:00:00 (Yerevan) to Next Day 01:59:59 (Yerevan)
-    // UTC: Previous Day 22:00:00 to Current Day 21:59:59
+  const targetDateStr = date || new Date().toISOString().split('T')[0];
+  const baseDate = new Date(`${targetDateStr}T00:00:00Z`);
 
-    const targetDateStr = date || new Date().toISOString().split('T')[0];
+  const startDate = new Date(baseDate);
+  startDate.setUTCDate(startDate.getUTCDate() - 1);
+  startDate.setUTCHours(22, 0, 0, 0);
 
-    // Parse as UTC midnight
-    const baseDate = new Date(`${targetDateStr}T00:00:00Z`);
+  const endDate = new Date(baseDate);
+  endDate.setUTCHours(21, 59, 59, 999);
 
-    // Start Timestamp: Previous Day 22:00:00 UTC
-    const startDate = new Date(baseDate);
-    startDate.setUTCDate(startDate.getUTCDate() - 1);
-    startDate.setUTCHours(22, 0, 0, 0);
+  const startTimestamp = Math.floor(startDate.getTime() / 1000);
+  const endTimestamp = Math.floor(endDate.getTime() / 1000);
 
-    // End Timestamp: Current Day 21:59:59 UTC
-    const endDate = new Date(baseDate);
-    endDate.setUTCHours(21, 59, 59, 999);
+  const conditions: string[] = [];
+  const params: any[] = [startTimestamp, endTimestamp];
 
-    const startTimestamp = Math.floor(startDate.getTime() / 1000);
-    const endTimestamp = Math.floor(endDate.getTime() / 1000);
-
-    // Prepare dynamic conditions
-    const conditions: string[] = [];
-    const params: any[] = [startTimestamp, endTimestamp];
-
-    if (device_id) {
-      params.push(`%${device_id}%`);
-      conditions.push(`m.meter_id ILIKE $${params.length}`);
-    }
-    if (hhid) {
-      params.push(`%${hhid}%`);
-      conditions.push(`h.hhid ILIKE $${params.length}`);
-    }
-
-    // Add status as parameter if provided
-    let statusFilter = '';
-    if (status && (status === 'Yes' || status === 'No')) {
-      params.push(status);
-      statusFilter = `WHERE ma.status = $${params.length}`;
-    }
-
-    // Add pagination params LAST
-    params.push(take, skip);
-    const limitIdx = params.length - 1;
-    const offsetIdx = params.length;
-
-    const typeCondition = types && types.length ? `AND e.type IN (${types.join(',')})` : '';
-
-    const query = `
-      WITH latest_assignments AS (
-        SELECT DISTINCT ON (ma.meter_id)
-          ma.meter_id,
-          ma.household_id
-        FROM meter_assignments ma
-        INNER JOIN meters m ON ma.meter_id = m.id
-        WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
-        ORDER BY ma.meter_id, ma.assigned_at DESC
-      ),
-      meter_activity AS (
-        SELECT 
-          m.meter_id AS device_id,
-          h.hhid,
-          CASE WHEN bool_or(
-            e.type = 3 AND EXISTS (
-              SELECT 1
-              FROM jsonb_array_elements(e.details->'members') AS m
-              WHERE (m->>'active')::boolean = true
-            )
-          ) THEN 'Yes' ELSE 'No' END AS status,
-          (
-            SELECT json_agg(e2.details)
-            FROM events e2
-            WHERE e2.device_id = m.meter_id
-              AND e2.type = 3
-              AND e2.timestamp >= $1
-              AND e2.timestamp <= $2
-          ) AS type3_details
-        FROM latest_assignments la
-        INNER JOIN meters m ON la.meter_id = m.id
-        INNER JOIN households h ON la.household_id = h.id
-        LEFT JOIN events e ON e.device_id = m.meter_id
-          AND e.timestamp >= $1
-          AND e.timestamp <= $2
-          ${typeCondition}
-        ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
-        GROUP BY m.meter_id, h.hhid
-      ),
-      global_stats AS (
-        SELECT
-          COUNT(*) as total_records,
-          SUM(CASE WHEN status = 'Yes' THEN 1 ELSE 0 END) as total_active
-        FROM meter_activity
-      )
-      SELECT 
-        ma.*,
-        gs.total_records,
-        gs.total_active,
-        COUNT(*) OVER() as filtered_count
-      FROM meter_activity ma
-      CROSS JOIN global_stats gs
-      ${statusFilter}
-      ORDER BY ma.device_id
-      LIMIT $${limitIdx}
-      OFFSET $${offsetIdx}
-    `;
-
-    const results = await AppDataSource.query(query, params);
-
-    // Stats are constant across the result set (derived from global_stats)
-    // BUT 'total' for pagination depends on whether we filtered by status.
-    // If status filter is ON, pagination total should be valid for that status.
-    // If status filter is OFF, pagination total should be total_records.
-
-    // The query returns `filtered_count` which is COUNT(*) OVER() on the filtered set.
-    // This is the correct total for pagination.
-
-    // Global stats (active/total) are for the dashboard badge.
-
-    const totalPagination = results.length > 0 ? parseInt(results[0].filtered_count) : 0;
-    const globalTotal = results.length > 0 ? parseInt(results[0].total_records) : 0;
-    const globalActive = results.length > 0 ? parseInt(results[0].total_active) : 0;
-
-    return {
-      data: results.map((row: any) => {
-        const allEvents: any[] = Array.isArray(row.type3_details) ? row.type3_details : [];
-        
-        // Collect all members across all type 3 events, keyed by "age-gender"
-        const memberMap = new Map<string, { code: string; active: boolean }>();
-    
-        for (const eventDetails of allEvents) {
-          if (!eventDetails || !Array.isArray(eventDetails.members)) continue;
-          for (const m of eventDetails.members) {
-            const genderShort = m.gender === "Male" ? "M" : m.gender === "Female" ? "F" : m.gender ?? "";
-            const code = `${m.age}-${genderShort}`;
-            const existing = memberMap.get(code);
-            memberMap.set(code, {
-              code,
-              // Once active in any press during the day → stays active
-              active: (existing?.active ?? false) || m.active === true,
-            });
-          }
-        }
-    
-        const declared_members = Array.from(memberMap.values());
-    
-        return {
-          device_id: row.device_id,
-          hhid: row.hhid,
-          status: row.status,
-          date: targetDateStr,
-          declared_members,
-        };
-      }),
-      stats: { active: globalActive, total: globalTotal },
-      filteredCount: totalPagination
-    };
+  if (device_id) {
+    params.push(`%${device_id}%`);
+    conditions.push(`m.meter_id ILIKE $${params.length}`);
   }
+  if (hhid) {
+    params.push(`%${hhid}%`);
+    conditions.push(`h.hhid ILIKE $${params.length}`);
+  }
+
+  let statusFilter = '';
+  if (status && (status === 'Yes' || status === 'No')) {
+    params.push(status);
+    statusFilter = `WHERE ma.status = $${params.length}`;
+  }
+
+  params.push(take, skip);
+  const limitIdx = params.length - 1;
+  const offsetIdx = params.length;
+
+  // ✅ typeCondition: filters which events JOIN into the LEFT JOIN
+  const typeCondition = types && types.length
+    ? `AND e.type IN (${types.join(',')})`
+    : '';
+
+  // ✅ statusCondition: how "Yes/No" is determined — the key fix
+  // - connectivity (no types): any event at all = Yes  (mirrors daily report's bool_or(TRUE))
+  // - button pressed (types=[3]): type 3 with active member = Yes
+  // - viewership (types=[29,42]): type 3 with active member — but viewership
+  //   uses getGeneralReport differently so this is fine to keep as-is there too
+  const statusCondition = types && types.length
+  ? `e.type = 3 AND EXISTS (
+       SELECT 1
+       FROM jsonb_array_elements(e.details->'members') AS m
+       WHERE (m->>'active')::boolean = true
+     )`
+  : `e.device_id IS NOT NULL`; // ← changed from TRUE
+
+  const query = `
+    WITH latest_assignments AS (
+      SELECT DISTINCT ON (ma.meter_id)
+        ma.meter_id,
+        ma.household_id
+      FROM meter_assignments ma
+      INNER JOIN meters m ON ma.meter_id = m.id
+      WHERE m.meter_id BETWEEN 'IM000101' AND 'IM000600'
+      ORDER BY ma.meter_id, ma.assigned_at DESC
+    ),
+    meter_activity AS (
+      SELECT 
+        m.meter_id AS device_id,
+        h.hhid,
+        CASE WHEN bool_or(${statusCondition}) THEN 'Yes' ELSE 'No' END AS status,
+        (
+          SELECT json_agg(e2.details)
+          FROM events e2
+          WHERE e2.device_id = m.meter_id
+            AND e2.type = 3
+            AND e2.timestamp >= $1
+            AND e2.timestamp <= $2
+        ) AS type3_details
+      FROM latest_assignments la
+      INNER JOIN meters m ON la.meter_id = m.id
+      INNER JOIN households h ON la.household_id = h.id
+      LEFT JOIN events e ON e.device_id = m.meter_id
+        AND e.timestamp >= $1
+        AND e.timestamp <= $2
+        ${typeCondition}
+      ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+      GROUP BY m.meter_id, h.hhid
+    ),
+    global_stats AS (
+      SELECT
+        COUNT(*) as total_records,
+        SUM(CASE WHEN status = 'Yes' THEN 1 ELSE 0 END) as total_active
+      FROM meter_activity
+    )
+    SELECT 
+      ma.*,
+      gs.total_records,
+      gs.total_active,
+      COUNT(*) OVER() as filtered_count
+    FROM meter_activity ma
+    CROSS JOIN global_stats gs
+    ${statusFilter}
+    ORDER BY ma.device_id
+    LIMIT $${limitIdx}
+    OFFSET $${offsetIdx}
+  `;
+
+  const results = await AppDataSource.query(query, params);
+
+  const totalPagination = results.length > 0 ? parseInt(results[0].filtered_count) : 0;
+  const globalTotal = results.length > 0 ? parseInt(results[0].total_records) : 0;
+  const globalActive = results.length > 0 ? parseInt(results[0].total_active) : 0;
+
+  return {
+    data: results.map((row: any) => {
+      const allEvents: any[] = Array.isArray(row.type3_details) ? row.type3_details : [];
+      const memberMap = new Map<string, { code: string; active: boolean }>();
+
+      for (const eventDetails of allEvents) {
+        if (!eventDetails || !Array.isArray(eventDetails.members)) continue;
+        for (const m of eventDetails.members) {
+          const genderShort = m.gender === "Male" ? "M" : m.gender === "Female" ? "F" : m.gender ?? "";
+          const code = `${m.age}-${genderShort}`;
+          const existing = memberMap.get(code);
+          memberMap.set(code, {
+            code,
+            active: (existing?.active ?? false) || m.active === true,
+          });
+        }
+      }
+
+      const declared_members = Array.from(memberMap.values());
+
+      return {
+        device_id: row.device_id,
+        hhid: row.hhid,
+        status: row.status,
+        date: targetDateStr,
+        declared_members,
+      };
+    }),
+    stats: { active: globalActive, total: globalTotal },
+    filteredCount: totalPagination
+  };
+}
 
   async getConnectivityReport(filters: ViewershipFilters = {}): Promise<PaginatedConnectivityReport> {
     const { data, stats, filteredCount } = await this.getGeneralReport(filters);
