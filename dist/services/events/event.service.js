@@ -204,7 +204,7 @@ class EventService {
         };
     }
     async getViewership(filters = {}) {
-        const { data, stats, filteredCount } = await this.getGeneralReport(filters, [29, 42]);
+        const { data, stats, filteredCount } = await this.getGeneralReport(filters, [29, 30, 42], "viewership");
         return {
             data: data.map(v => ({ ...v, viewership: v.status })),
             stats,
@@ -219,7 +219,7 @@ class EventService {
     /**
      * Helper to get report data (Connectivity, Viewership, Button Pressed)
      */
-    async getGeneralReport(filters, types) {
+    async getGeneralReport(filters, types, statusMode = "button_pressed") {
         const { device_id, hhid, date, status, page = 1, limit = 25 } = filters;
         const take = limit;
         const skip = (page - 1) * take;
@@ -259,13 +259,23 @@ class EventService {
         // - button pressed (types=[3]): type 3 with active member = Yes
         // - viewership (types=[29,42]): type 3 with active member — but viewership
         //   uses getGeneralReport differently so this is fine to keep as-is there too
-        const statusCondition = types && types.length
-            ? `e.type = 3 AND EXISTS (
-       SELECT 1
-       FROM jsonb_array_elements(e.details->'members') AS m
-       WHERE (m->>'active')::boolean = true
-     )`
-            : `e.device_id IS NOT NULL`; // ← changed from TRUE
+        let statusCondition;
+        switch (statusMode) {
+            case "connectivity":
+                statusCondition = `e.device_id IS NOT NULL`;
+                break;
+            case "viewership":
+                statusCondition = `e.type IN (29, 30, 42)`;
+                break;
+            case "button_pressed":
+            default:
+                statusCondition = `e.type = 3 AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(e.details->'members') AS m
+            WHERE (m->>'active')::boolean = true
+          )`;
+                break;
+        }
         const query = `
     WITH latest_assignments AS (
       SELECT DISTINCT ON (ma.meter_id)
@@ -352,7 +362,7 @@ class EventService {
         };
     }
     async getConnectivityReport(filters = {}) {
-        const { data, stats, filteredCount } = await this.getGeneralReport(filters);
+        const { data, stats, filteredCount } = await this.getGeneralReport(filters, undefined, "connectivity");
         return {
             data: data.map(v => ({ ...v, connectivity: v.status })),
             stats,
@@ -365,7 +375,7 @@ class EventService {
         };
     }
     async getButtonPressedReport(filters = {}) {
-        const { data, stats, filteredCount } = await this.getGeneralReport(filters, [3]);
+        const { data, stats, filteredCount } = await this.getGeneralReport(filters, [3], "button_pressed");
         return {
             data: data.map(v => ({ ...v, button_pressed: v.status })),
             stats,
