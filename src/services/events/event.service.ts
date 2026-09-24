@@ -268,7 +268,7 @@ export class EventService {
 
 
   async getViewership(filters: ViewershipFilters = {}): Promise<PaginatedViewership> {
-    const { data, stats, filteredCount } = await this.getGeneralReport(filters, [29, 42]);
+    const { data, stats, filteredCount } = await this.getGeneralReport(filters, [29, 30, 42], "viewership");
     return {
       data: data.map(v => ({ ...v, viewership: v.status })),
       stats,
@@ -286,7 +286,8 @@ export class EventService {
    */
   private async getGeneralReport(
   filters: ViewershipFilters,
-  types?: number[]
+  types?: number[],
+  statusMode: "connectivity" | "button_pressed" | "viewership" = "button_pressed"
 ): Promise<{ data: any[]; stats: { active: number; total: number }; filteredCount: number }> {
   const { device_id, hhid, date, status, page = 1, limit = 25 } = filters;
 
@@ -338,13 +339,23 @@ export class EventService {
   // - button pressed (types=[3]): type 3 with active member = Yes
   // - viewership (types=[29,42]): type 3 with active member — but viewership
   //   uses getGeneralReport differently so this is fine to keep as-is there too
-  const statusCondition = types && types.length
-  ? `e.type = 3 AND EXISTS (
-       SELECT 1
-       FROM jsonb_array_elements(e.details->'members') AS m
-       WHERE (m->>'active')::boolean = true
-     )`
-  : `e.device_id IS NOT NULL`; // ← changed from TRUE
+  let statusCondition: string;
+      switch (statusMode) {
+        case "connectivity":
+          statusCondition = `e.device_id IS NOT NULL`;
+          break;
+        case "viewership":
+          statusCondition = `e.type IN (29, 30, 42)`;
+          break;
+        case "button_pressed":
+        default:
+          statusCondition = `e.type = 3 AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(e.details->'members') AS m
+            WHERE (m->>'active')::boolean = true
+          )`;
+          break;
+      }
 
   const query = `
     WITH latest_assignments AS (
@@ -438,7 +449,7 @@ export class EventService {
 }
 
   async getConnectivityReport(filters: ViewershipFilters = {}): Promise<PaginatedConnectivityReport> {
-    const { data, stats, filteredCount } = await this.getGeneralReport(filters);
+    const { data, stats, filteredCount } = await this.getGeneralReport(filters, undefined, "connectivity");
     return {
       data: data.map(v => ({ ...v, connectivity: v.status })),
       stats,
@@ -452,7 +463,7 @@ export class EventService {
   }
 
   async getButtonPressedReport(filters: ViewershipFilters = {}): Promise<PaginatedButtonPressedReport> {
-    const { data, stats, filteredCount } = await this.getGeneralReport(filters, [3]);
+    const { data, stats, filteredCount } = await this.getGeneralReport(filters, [3], "button_pressed");
     return {
       data: data.map(v => ({ ...v, button_pressed: v.status })),
       stats,
