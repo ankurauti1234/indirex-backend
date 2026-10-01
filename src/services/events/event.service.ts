@@ -462,8 +462,12 @@ export class EventService {
     };
   }
 
-  async getButtonPressedReport(filters: ViewershipFilters = {}): Promise<PaginatedButtonPressedReport> {
-    const { data, stats, filteredCount } = await this.getGeneralReport(filters, [3], "button_pressed");
+  async getButtonPressedReport(
+  filters: ViewershipFilters = {}
+  ): Promise<PaginatedButtonPressedReport> {
+    const { data, stats, filteredCount } =
+      await this.getGeneralReport(filters, [3], "button_pressed");
+
     return {
       data: data.map(v => ({ ...v, button_pressed: v.status })),
       stats,
@@ -472,7 +476,7 @@ export class EventService {
         limit: filters.limit || 25,
         total: filteredCount,
         pages: Math.ceil(filteredCount / (filters.limit || 25)),
-      }
+      },
     };
   }
 

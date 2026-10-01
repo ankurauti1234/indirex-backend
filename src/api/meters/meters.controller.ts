@@ -137,23 +137,24 @@ export const getInstalledMeters = async (req: Request, res: Response) => {
 
 export const unassignMeter = async (req: Request, res: Response) => {
   const { hhid, meterId } = req.body;
- 
+
   if (!hhid || !meterId) {
     return res.status(400).json({
       success: false,
       error: "Both HHID and Meter ID are required.",
     });
   }
- 
+
   const queryRunner = AppDataSource.createQueryRunner();
   await queryRunner.connect();
- 
+
   try {
     // 1. Resolve household UUID
     const household = await queryRunner.query(
       `SELECT id FROM households WHERE hhid = $1`,
       [hhid]
     );
+
     if (household.length === 0) {
       await queryRunner.release();
       return res.status(404).json({
@@ -161,13 +162,17 @@ export const unassignMeter = async (req: Request, res: Response) => {
         error: `Household with HHID "${hhid}" not found.`,
       });
     }
+
     const householdId: string = household[0].id;
- 
+
     // 2. Resolve meter UUID
     const meter = await queryRunner.query(
-      `SELECT id FROM meters WHERE meter_id = $1`,
+      `SELECT id, assigned_household_id, is_assigned
+       FROM meters
+       WHERE meter_id = $1`,
       [meterId]
     );
+
     if (meter.length === 0) {
       await queryRunner.release();
       return res.status(404).json({
@@ -175,55 +180,119 @@ export const unassignMeter = async (req: Request, res: Response) => {
         error: `Meter with Meter ID "${meterId}" not found.`,
       });
     }
+
     const meterUuid: string = meter[0].id;
- 
-    // 3. Atomic transaction
+
+    // 3. Verify that this exact meter is currently assigned
+    //    to this exact household.
+    const assignment = await queryRunner.query(
+      `SELECT assigned_at
+       FROM meter_assignments
+       WHERE meter_id = $1
+         AND household_id = $2`,
+      [meterUuid, householdId]
+    );
+
+    if (assignment.length === 0) {
+      await queryRunner.release();
+      return res.status(409).json({
+        success: false,
+        error: `Meter ${meterId} is not currently assigned to household ${hhid}.`,
+      });
+    }
+
+    // 4. Check whether this exact meter + household has
+    //    a failed decommission attempt whose 5-minute
+    //    unassign window is still active.
+    const eligibleAttempt = await queryRunner.query(
+      `SELECT
+         id,
+         status,
+         attempted_at,
+         unassign_available_until
+       FROM decommission_attempts
+       WHERE meter_id = $1
+         AND household_id = $2
+         AND status = 'FAILED'
+         AND unassign_available_until IS NOT NULL
+         AND unassign_available_until > NOW()
+       ORDER BY attempted_at DESC
+       LIMIT 1`,
+      [meterUuid, householdId]
+    );
+
+    if (eligibleAttempt.length === 0) {
+      await queryRunner.release();
+
+      return res.status(403).json({
+        success: false,
+        error:
+          "Meter cannot be unassigned. A decommission attempt must fail before unassignment is allowed, and the 5-minute unassignment window must still be active.",
+      });
+    }
+
+    // 5. Atomic transaction
     await queryRunner.startTransaction();
+
     try {
-      const assignment = await queryRunner.query(
-        `SELECT assigned_at FROM meter_assignments WHERE meter_id = $1 AND household_id = $2`,
+      const assignedAt = assignment[0].assigned_at ?? null;
+
+      await queryRunner.query(
+        `DELETE FROM meter_assignments
+         WHERE meter_id = $1
+           AND household_id = $2`,
         [meterUuid, householdId]
       );
-      const assignedAt = assignment[0]?.assigned_at ?? null;
- 
+
       await queryRunner.query(
-        `DELETE FROM meter_assignments WHERE meter_id = $1 AND household_id = $2`,
-        [meterUuid, householdId]
-      );
- 
-      await queryRunner.query(
-        `UPDATE meters SET assigned_household_id = NULL, is_assigned = FALSE, updated_at = NOW() WHERE id = $1`,
+        `UPDATE meters
+         SET assigned_household_id = NULL,
+             is_assigned = FALSE,
+             updated_at = NOW()
+         WHERE id = $1`,
         [meterUuid]
       );
- 
+
       await queryRunner.query(
-        `INSERT INTO household_meter_history (household_id, meter_id, assigned_at, decommissioned_at)
+        `INSERT INTO household_meter_history
+         (household_id, meter_id, assigned_at, decommissioned_at)
          VALUES ($1, $2, COALESCE($3, NOW()), NOW())`,
         [householdId, meterUuid, assignedAt]
       );
- 
-      await queryRunner.commitTransaction();
 
-      // Write unassign log (fire-and-forget — don't block the response)
-      unassignService.writeLog({
-        meterId,
-        hhid,
-        unassignedByUserId: (req as any).user?.id ?? null,
-      }).catch((err) => console.error("unassign log write failed:", err));
+      await queryRunner.commitTransaction();
     } catch (txErr) {
       await queryRunner.rollbackTransaction();
       throw txErr;
     }
- 
-    // 4. Return updated meter state
+
+    // 6. Write unassign log
+    unassignService
+      .writeLog({
+        meterId,
+        hhid,
+        unassignedByUserId: (req as any).user?.id ?? null,
+      })
+      .catch((err) =>
+        console.error("unassign log write failed:", err)
+      );
+
+    // 7. Return updated meter state
     const verify = await queryRunner.query(
-      `SELECT meter_id, assigned_household_id, is_assigned, updated_at FROM meters WHERE meter_id = $1`,
+      `SELECT
+         meter_id,
+         assigned_household_id,
+         is_assigned,
+         updated_at
+       FROM meters
+       WHERE meter_id = $1`,
       [meterId]
     );
+
     const updatedMeter = verify[0];
- 
+
     await queryRunner.release();
- 
+
     return res.json({
       success: true,
       message: `Meter ${meterId} successfully unassigned from household ${hhid} and history recorded.`,
@@ -235,9 +304,20 @@ export const unassignMeter = async (req: Request, res: Response) => {
       },
     });
   } catch (err: unknown) {
-    if (!queryRunner.isReleased) await queryRunner.release();
+    if (!queryRunner.isReleased) {
+      await queryRunner.release();
+    }
+
     console.error("unassignMeter error:", err);
-    const message = err instanceof Error ? err.message : "An unexpected database error occurred.";
-    return res.status(500).json({ success: false, error: message });
+
+    const message =
+      err instanceof Error
+        ? err.message
+        : "An unexpected database error occurred.";
+
+    return res.status(500).json({
+      success: false,
+      error: message,
+    });
   }
 };

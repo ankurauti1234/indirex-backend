@@ -9,6 +9,7 @@ const DecommissionLog_1 = require("../../database/entities/DecommissionLog");
 const MeterAssignment_1 = require("../../database/entities/MeterAssignment");
 const User_1 = require("../../database/entities/User");
 const HouseholdMeterHistory_1 = require("../../database/entities/HouseholdMeterHistory");
+const DecommissionAttempt_1 = require("../../database/entities/DecommissionAttempt");
 const mqtt_client_1 = require("../mqtt/mqtt.client");
 class DecommissionService {
     constructor() {
@@ -18,6 +19,7 @@ class DecommissionService {
         this.assignmentRepo = connection_1.AppDataSource.getRepository(MeterAssignment_1.MeterAssignment);
         this.userRepo = connection_1.AppDataSource.getRepository(User_1.User);
         this.historyRepo = connection_1.AppDataSource.getRepository(HouseholdMeterHistory_1.HouseholdMeterHistory);
+        this.attemptRepo = connection_1.AppDataSource.getRepository(DecommissionAttempt_1.DecommissionAttempt);
     }
     // Returns a flat list of all currently active hhid->meterId assignments
     async getActiveAssignments() {
@@ -30,7 +32,6 @@ class DecommissionService {
             .map((m) => ({ hhid: m.assignedHousehold.hhid, meterId: m.meterId }));
     }
     async getAssignedMeters(params) {
-        // ... (unchanged - keep your existing logic)
         const { page, limit, search } = params;
         const skip = (page - 1) * limit;
         const query = this.meterRepo
@@ -45,20 +46,73 @@ class DecommissionService {
             .skip(skip)
             .take(limit)
             .getManyAndCount();
+        const meterIds = meters.map((m) => m.id);
+        /*
+         * Find the latest FAILED decommission attempt for each
+         * currently assigned meter + household pair whose
+         * 5-minute unassign window is still active.
+         */
+        let eligibleAttempts = [];
+        if (meterIds.length > 0) {
+            eligibleAttempts = await connection_1.AppDataSource.query(`
+      SELECT DISTINCT ON (da.meter_id, da.household_id)
+        da.meter_id,
+        da.household_id,
+        da.unassign_available_until
+      FROM decommission_attempts da
+      INNER JOIN meters m
+        ON m.id = da.meter_id
+      WHERE da.meter_id = ANY($1::uuid[])
+        AND da.status = 'FAILED'
+        AND da.unassign_available_until IS NOT NULL
+        AND da.unassign_available_until > NOW()
+        AND m.is_assigned = TRUE
+      ORDER BY
+        da.meter_id,
+        da.household_id,
+        da.attempted_at DESC
+      `, [meterIds]);
+        }
+        /*
+         * Create a lookup using:
+         *
+         * meter UUID + household UUID
+         *
+         * This is deliberately NOT just meter UUID.
+         */
+        const unassignMap = new Map();
+        for (const attempt of eligibleAttempts) {
+            const key = `${attempt.meter_id}:${attempt.household_id}`;
+            unassignMap.set(key, {
+                unassignAvailableUntil: attempt.unassign_available_until,
+            });
+        }
         return {
-            data: meters.map((m) => ({
-                id: m.id,
-                meterId: m.meterId,
-                meterType: m.meterType,
-                assetSerialNumber: m.assetSerialNumber,
-                household: m.assignedHousehold
-                    ? {
-                        id: m.assignedHousehold.id,
-                        hhid: m.assignedHousehold.hhid,
-                    }
-                    : null,
-                assignedAt: m.updatedAt,
-            })),
+            data: meters.map((m) => {
+                const household = m.assignedHousehold;
+                const key = household
+                    ? `${m.id}:${household.id}`
+                    : null;
+                const unassignInfo = key
+                    ? unassignMap.get(key)
+                    : undefined;
+                return {
+                    id: m.id,
+                    meterId: m.meterId,
+                    meterType: m.meterType,
+                    assetSerialNumber: m.assetSerialNumber,
+                    household: household
+                        ? {
+                            id: household.id,
+                            hhid: household.hhid,
+                        }
+                        : null,
+                    assignedAt: m.updatedAt,
+                    // New fields
+                    unassignAvailable: !!unassignInfo,
+                    unassignAvailableUntil: unassignInfo?.unassignAvailableUntil ?? null,
+                };
+            }),
             pagination: {
                 total,
                 page,
@@ -68,35 +122,103 @@ class DecommissionService {
         };
     }
     async decommissionMeter(dto) {
+        // 1. Find the currently assigned meter and its household
         const meter = await this.meterRepo.findOne({
-            where: { meterId: dto.meterId, isAssigned: true },
+            where: {
+                meterId: dto.meterId,
+                isAssigned: true,
+            },
             relations: ["assignedHousehold"],
         });
         if (!meter || !meter.assignedHousehold) {
             throw new Error("Meter not found or not currently assigned to a household");
         }
         const household = meter.assignedHousehold;
-        // CRITICAL: Wait for device to confirm decommissioning
+        // 2. Create ONE decommission attempt for this user-initiated operation.
+        //    MQTT may internally retry 3 times, but those are NOT separate
+        //    decommission_attempts records.
+        const attemptedByUser = dto.decommissionedBy
+            ? await this.userRepo.findOneBy({
+                id: dto.decommissionedBy,
+            })
+            : null;
+        const attempt = this.attemptRepo.create({
+            meter,
+            household,
+            attemptedByUser,
+            status: "PENDING",
+            reason: dto.reason || null,
+            metadata: {
+                triggeredVia: "API",
+                mqttRequestTopic: `apm/decommission/${dto.meterId}`,
+            },
+            unassignAvailableUntil: null,
+        });
+        await this.attemptRepo.save(attempt);
+        // 3. Send the decommission command and wait for device ACK.
+        //    publishDecommissionWithAck() handles the 3 internal MQTT retries.
         try {
             console.log(`Sending decommission command and waiting for ACK: ${dto.meterId}`);
-            await (0, mqtt_client_1.publishDecommissionWithAck)(dto.meterId, 30000); // 30s timeout
+            await (0, mqtt_client_1.publishDecommissionWithAck)(dto.meterId, 30000);
             console.log(`Meter ${dto.meterId} successfully confirmed decommissioning`);
         }
         catch (error) {
             console.error("Decommissioning failed at device level:", error.message);
+            // 4. All 3 internal MQTT attempts failed.
+            //    Make this specific meter + household eligible for unassignment
+            //    for exactly 5 minutes.
+            attempt.status = "FAILED";
+            attempt.unassignAvailableUntil = new Date(Date.now() + 5 * 60 * 1000);
+            attempt.metadata = {
+                ...attempt.metadata,
+                ackReceived: false,
+                failedAt: new Date().toISOString(),
+                error: error.message,
+            };
+            await this.attemptRepo.save(attempt);
             throw new Error(`Device failed or did not respond: ${error.message}`);
         }
-        // Only now: update database (safe!)
+        // ============================================================
+        // DEVICE DECOMMISSION SUCCESS
+        // ============================================================
+        // 5. Mark the decommission attempt as successful.
+        attempt.status = "SUCCESS";
+        attempt.unassignAvailableUntil = null;
+        attempt.metadata = {
+            ...attempt.metadata,
+            ackReceived: true,
+            ackConfirmedAt: new Date().toISOString(),
+            mqttAckTopic: "apm/decommission",
+        };
+        await this.attemptRepo.save(attempt);
+        // 6. Get the existing assignment BEFORE deleting it.
+        //    We use meter + household so we only affect this exact pair.
+        const assignment = await this.assignmentRepo.findOne({
+            where: {
+                meter: {
+                    id: meter.id,
+                },
+                household: {
+                    id: household.id,
+                },
+            },
+        });
+        // 7. Mark the meter as unassigned.
         meter.isAssigned = false;
         meter.assignedHousehold = null;
         await this.meterRepo.save(meter);
-        // Capture assignedAt from the assignment before deleting it
-        const assignment = await this.assignmentRepo.findOne({
-            where: { meter: { id: meter.id } },
-        });
-        // ALSO DELETE FROM METER_ASSIGNMENTS (To fix household status issue)
-        await this.assignmentRepo.delete({ meter: { id: meter.id } });
-        // Write to household_meter_history: assignedAt from assignment, decommissionedAt = now
+        // 8. Delete ONLY this meter + household assignment.
+        if (assignment) {
+            await this.assignmentRepo.delete({
+                meter: {
+                    id: meter.id,
+                },
+                household: {
+                    id: household.id,
+                },
+            });
+        }
+        // 9. Create household-meter history.
         const decommissionedAt = new Date();
         const historyRecord = this.historyRepo.create({
             meter,
@@ -105,6 +227,7 @@ class DecommissionService {
             decommissionedAt,
         });
         await this.historyRepo.save(historyRecord);
+        // 10. Create successful decommission log.
         const log = this.logRepo.create({
             meter,
             household,
@@ -119,16 +242,14 @@ class DecommissionService {
             },
         });
         const savedLog = await this.logRepo.save(log);
-        // Find user for response
-        const user = await this.userRepo.findOneBy({ id: dto.decommissionedBy });
+        // 11. Return the object expected by the frontend.
         return {
             meterId: meter.meterId,
             previousHouseholdHhid: household.hhid,
             decommissionedAt: savedLog.decommissionedAt,
             logId: savedLog.id,
             reason: dto.reason || "No reason provided",
-            decommissionedBy: user ? { name: user.name, email: user.email } : null,
-            status: "decommissioned_and_confirmed_by_device",
+            status: "decommissioned",
         };
     }
     async getDecommissionLogs(params) {
