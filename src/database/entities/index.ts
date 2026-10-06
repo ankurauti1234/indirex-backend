@@ -25,3 +25,4 @@ export * from "./HouseholdMeterHistory";
 export * from "./DeviceHealthReportCSV";
 export * from "./SilentDeviceReportCSV";
 export * from "./UnassignLog";
+export * from "./DecommissionAttempt";

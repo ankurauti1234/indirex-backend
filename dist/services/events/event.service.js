@@ -384,7 +384,7 @@ class EventService {
                 limit: filters.limit || 25,
                 total: filteredCount,
                 pages: Math.ceil(filteredCount / (filters.limit || 25)),
-            }
+            },
         };
     }
     async getHouseholdVisualization(filters = {}) {
